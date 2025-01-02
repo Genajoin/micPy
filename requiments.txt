@@ -1,0 +1,7 @@
+keyboard
+pyaudio
+pyperclip
+whisper
+pynput
+soundfile
+numpy
