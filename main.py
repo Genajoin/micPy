@@ -1,4 +1,5 @@
 import io
+import os
 import threading
 import pyaudio
 import whisper
@@ -10,25 +11,28 @@ import time
 from single_instance import check_single_instance
 
 
+# Инициализация модели Whisper
+model_path = "medium" 
+# Параметры аудио потока
+FORMAT = pyaudio.paInt16  # Формат данных 
+CHANNELS = 1             # Моно звук
+RATE = 44100              # Частота дискретизации
+FRAMES_PER_BUFFER = 4096  # Размер буфера
+timeout_duration = 30.0  # максимальная длительность записи в секундах
 lock_file_path = "/tmp/micpy.lock"  # Путь к файлу блокировки
+script_dir = os.path.dirname(os.path.abspath(__file__))
+tmp_output_file = "/tmp/micpy-output.wav"  # Путь к файлу выходного звука
+# Глобальная переменная для хранения состояния активации микрофона
+recording_active = False
+audio_data = []
+
+
 instance_running, lock_file = check_single_instance(lock_file_path)
-    
+
 if not instance_running:
     print("Этот скрипт уже запущен.")
     exit()
 try:
-    # Инициализация модели Whisper
-    model_path = "medium" 
-    # Параметры аудио потока
-    FORMAT = pyaudio.paInt16  # Формат данных 
-    CHANNELS = 1             # Моно звук
-    RATE = 44100              # Частота дискретизации
-    FRAMES_PER_BUFFER = 4096  # Размер буфера
-    timeout_duration = 10.0  # максимальная длительность записи в секундах
-
-    # Глобальная переменная для хранения состояния активации микрофона
-    recording_active = False
-    audio_data = []
 
     if torch.cuda.is_available():
         print("GPU доступен")
@@ -55,7 +59,8 @@ try:
     def start_recording():
         global recording_active, audio_data
         
-        play_audio("pop-long.wav");
+        file_path = os.path.join(script_dir, "pop-long.wav")
+        play_audio(file_path)
 
         audio = pyaudio.PyAudio()
         stream = audio.open(format=FORMAT,
@@ -93,18 +98,19 @@ try:
                                         samplerate=RATE, channels=CHANNELS, 
                                         subtype='PCM_16', dtype='float32')
             # Запись в файл wav для тестирования
-            sf.write('output.wav', audio, sample_rate)
+            sf.write(tmp_output_file, audio, sample_rate)
             
             # Проверка количества каналов (если больше одного, оставляем только первый канал)
             if len(audio.shape) > 1:
                 audio = audio[:, 0]
-            result = model.transcribe(audio="output.wav")
+            result = model.transcribe(audio=tmp_output_file)
             transcribed_text = result['text']
             print("Транскрибированный текст:", transcribed_text)
             pyperclip.copy(result["text"])  # Копируем текст в буфер обмена
 
         audio_data.clear()  # Очищаем данные после использования
-        play_audio("pop-alert.wav");
+        file_path = os.path.join(script_dir, "pop-alert.wav")
+        play_audio(file_path);
 
     def toggle_recording():
         global recording_active
