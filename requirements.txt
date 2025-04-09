@@ -4,4 +4,3 @@ pyperclip
 whisper
 pynput
 soundfile
-numpy
