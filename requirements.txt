@@ -1,6 +1,7 @@
 keyboard
 pyaudio
 pyperclip
-whisper
+git+https://github.com/openai/whisper.git
 pynput
 soundfile
+torch

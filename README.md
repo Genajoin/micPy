@@ -17,14 +17,9 @@
    python -m venv venv
    source venv/bin/activate  # Linux/MacOS || venv\Scripts\activate  # Windows
    ```
-3. Установите зависимости:
+3. Установите все зависимости одной командой:
    ```bash
-   pip install -r requirements.txt 
-   ```
-4. Установите Whisper и Torch:
-   ```bash
-   pip install git+https://github.com/openai/whisper.git
-   pip install torch
+   pip install -r requirements.txt
    ```
 
 ---
@@ -86,7 +81,7 @@ python main.py
 ---
 
 ## 🛠️ Инструменты и библиотеки
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/Genajoin/micPy/main.yml?style=flat-square)](https://github.com/Genajoin/micPy/actions)
+[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/Genajoin/micPy/bandit.yml)](https://github.com/Genajoin/micPy/actions)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/Genajoin/micPy?style=flat-square)](https://www.codefactor.io/repository/github/Genajoin/micPy)
 
 ---
