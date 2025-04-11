@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import json
 import os
 
@@ -8,10 +8,11 @@ MODEL_SIZES = ["tiny", "base", "small", "medium", "large"]
 class SettingsWindow(tk.Tk):
     SETTINGS_FILE = "settings.json"
 
-    def __init__(self, manual_start_callback=None, manual_stop_callback=None):
+    def __init__(self, manual_start_callback=None, manual_stop_callback=None, model=None):
         super().__init__()
         self.manual_start_callback = manual_start_callback
         self.manual_stop_callback = manual_stop_callback
+        self.model = model
         self.title("Настройки micPy")
         self.geometry("500x600")
         self.resizable(False, False)
@@ -28,6 +29,11 @@ class SettingsWindow(tk.Tk):
         self.create_widgets()
 
     def create_widgets(self):
+        # --- Кнопка для транскрипции файла ---
+        frame_file = ttk.Frame(self)
+        frame_file.pack(fill="x", padx=10, pady=5)
+        file_btn = ttk.Button(frame_file, text="Выбрать файл для транскрипции", command=self.transcribe_file_dialog)
+        file_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
         # --- Настройки модели ---
         frame_settings = ttk.LabelFrame(self, text="Параметры модели")
         frame_settings.pack(fill="x", padx=10, pady=10)
@@ -85,6 +91,39 @@ class SettingsWindow(tk.Tk):
         guide_btn = ttk.Button(frame_guide, text="Краткое руководство", command=self.show_guide)
         guide_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
         guide_btn.pack(side="right", padx=5)
+        # --- Обработчик выбора и транскрипции файла ---
+    def transcribe_file_dialog(self):
+        filetypes = [
+            ("Аудиофайлы", "*.wav *.mp3 *.flac *.ogg *.m4a *.aac *.wma *.opus"),
+            ("Все файлы", "*.*"),
+        ]
+        filepath = filedialog.askopenfilename(
+            title="Выберите аудиофайл для транскрипции",
+            filetypes=filetypes
+        )
+        if not filepath:
+            return
+        if not self.model:
+            messagebox.showerror("Ошибка", "Модель не инициализирована.")
+            return
+        try:
+            self.status.set("Транскрипция файла...")
+            self.update()
+            import pyperclip
+            result = self.model.transcribe(filepath)
+            text = result.get("text", "")
+            self.current_message.set(text)
+            self.history.append(text)
+            self.history_listbox.insert("end", text)
+            try:
+                pyperclip.copy(text)
+                messagebox.showinfo("Готово", "Текст скопирован в буфер обмена.")
+            except Exception as e:
+                messagebox.showwarning("Внимание", f"Не удалось скопировать в буфер обмена: {e}")
+            self.status.set("Транскрипция завершена")
+        except Exception as e:
+            self.status.set("Ошибка транскрипции")
+            messagebox.showerror("Ошибка транскрипции", str(e))
 
     def start_manual_recording(self):
         self.status.set("Ручная запись: идет...")

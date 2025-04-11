@@ -100,6 +100,7 @@ from audio_recorder import AudioRecorder
 if __name__ == "__main__":
     import signal
     import sys
+    import argparse
 
     def handle_signal(signum, frame):
         log.info("Signal received, exiting...")
@@ -109,6 +110,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
+    parser = argparse.ArgumentParser(description="micPy: голосовой ввод и транскрипция аудиофайлов")
+    parser.add_argument("-f", "--file", type=str, help="Путь к аудиофайлу (wav, mp3, flac и др.) для транскрипции")
+    args = parser.parse_args()
+
     if not instance_running:
         log.error("Этот скрипт уже запущен.")
         sys.exit()
@@ -116,6 +121,28 @@ if __name__ == "__main__":
     device = 'cuda' if try_cuda and torch.cuda.is_available() else 'cpu'
     log.info(f"Используем {device}")
     model = whisper.load_model(model_path, device=device)
+
+    # --- Транскрипция аудиофайла, если указан аргумент --file ---
+    if args.file:
+        audio_path = args.file
+        if not os.path.isfile(audio_path):
+            log.error(f"Файл не найден: {audio_path}")
+            sys.exit(1)
+        try:
+            log.info(f"Транскрибируем файл: {audio_path}")
+            result = model.transcribe(audio_path)
+            text = result.get("text", "")
+            print("Распознанный текст:\n")
+            print(text)
+            try:
+                pyperclip.copy(text)
+                print("\nТекст скопирован в буфер обмена.")
+            except Exception as e:
+                print(f"Не удалось скопировать в буфер обмена: {e}")
+        except Exception as e:
+            log.error(f"Ошибка транскрипции: {e}")
+            sys.exit(2)
+        sys.exit(0)
 
     recorder = AudioRecorder(
         model=model,
@@ -165,7 +192,8 @@ if __name__ == "__main__":
                 app.after(0, app.block_stop_button)
         app = SettingsWindow(
             manual_start_callback=manual_start,
-            manual_stop_callback=manual_stop
+            manual_stop_callback=manual_stop,
+            model=model
         )
         # Передаем callback'и
         recorder.set_status_callback(gui_set_status)
