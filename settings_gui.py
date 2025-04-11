@@ -72,13 +72,17 @@ class SettingsWindow(tk.Tk):
         # --- Сервисные кнопки ---
         frame_service = ttk.Frame(self)
         frame_service.pack(fill="x", padx=10, pady=5)
-        copy_btn = ttk.Button(frame_service, text="Копировать в буфер", command=self.copy_current_message)
-        copy_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
         apply_btn = ttk.Button(frame_service, text="Применить", command=self.apply_settings)
         apply_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
         save_btn = ttk.Button(frame_service, text="Сохранить", command=self.save_settings)
         save_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
-        guide_btn = ttk.Button(frame_service, text="Краткое руководство", command=self.show_guide)
+
+        # --- Копирование и справка ---
+        frame_guide = ttk.Frame(self)
+        frame_guide.pack(fill="x", padx=10, pady=5)
+        copy_btn = ttk.Button(frame_guide, text="Копировать в буфер", command=self.copy_current_message)
+        copy_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+        guide_btn = ttk.Button(frame_guide, text="Краткое руководство", command=self.show_guide)
         guide_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
         guide_btn.pack(side="right", padx=5)
 
@@ -153,7 +157,9 @@ class SettingsWindow(tk.Tk):
             "- Включите GPU, если доступно.\n"
             "- Статус показывает текущее состояние.\n"
             "- История содержит последние сообщения.\n"
-            "- Используйте кнопки для управления."
+            "- Используйте кнопки для управления.\n" \
+            "Нажмите Ctrl + PrtScr чтобы активировать или деактивировать запись.\n" \
+            "Нажмите Ctrl + Ctrl + PrtScr чтобы завершить программу."
         )
         messagebox.showinfo("micPy - Руководство", guide)
 
