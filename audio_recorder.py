@@ -117,3 +117,9 @@ class AudioRecorder:
         self.audio_data.clear()
         file_path = os.path.join(self.script_dir, "pop-alert.wav")
         self.play_audio(file_path)
+        # Удаляем временный аудиофайл после использования
+        try:
+            os.remove(self.tmp_output_file)
+            log.info(f"Временный файл {self.tmp_output_file} удалён.")
+        except Exception as e:
+            log.warning(f"Не удалось удалить временный файл {self.tmp_output_file}: {e}")

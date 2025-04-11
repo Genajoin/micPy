@@ -1,5 +1,7 @@
 import io
 import os
+import tempfile
+import getpass
 import threading
 import pyaudio
 import whisper
@@ -52,9 +54,16 @@ CHANNELS = 1             # Моно звук
 RATE = 44100              # Частота дискретизации
 FRAMES_PER_BUFFER = 4096  # Размер буфера
 timeout_duration = settings["timeout_duration"]  # максимальная длительность записи в секундах
-lock_file_path = "/tmp/micpy.lock"  # Путь к файлу блокировки
+lock_file_path = os.path.join(
+    tempfile.gettempdir(),
+    f"micpy-{getpass.getuser()}.lock"
+)  # Кроссплатформенный путь к lock-файлу
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-tmp_output_file = "/tmp/micpy-output.wav"  # Путь к файлу выходного звука
+
+# Создаём временный wav-файл и сразу закрываем дескриптор
+tmp_fd, tmp_output_file = tempfile.mkstemp(suffix=".wav")
+os.close(tmp_fd)
 audio_data = []
 
 instance_running, lock_file = check_single_instance(lock_file_path)
