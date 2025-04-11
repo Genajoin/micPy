@@ -55,33 +55,31 @@ class SettingsWindow(tk.Tk):
         current_msg_entry = ttk.Entry(frame_status, textvariable=self.current_message, state="readonly", width=50)
         current_msg_entry.grid(row=1, column=1, padx=5, pady=5)
 
+        # --- Кнопки ручного управления записью ---
+        frame_manual = ttk.Frame(self)
+        frame_manual.pack(fill="x", padx=10, pady=5)
+        self.manual_start_btn = ttk.Button(frame_manual, text="Начать запись", command=self.start_manual_recording)
+        self.manual_start_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+        self.manual_stop_btn = ttk.Button(frame_manual, text="Остановить запись", command=self.stop_manual_recording)
+        self.manual_stop_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+
         # --- История сообщений ---
         frame_history = ttk.LabelFrame(self, text="История сообщений")
         frame_history.pack(fill="both", expand=True, padx=10, pady=10)
         self.history_listbox = tk.Listbox(frame_history, height=8)
         self.history_listbox.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # --- Кнопки управления ---
-        frame_buttons = ttk.Frame(self)
-        frame_buttons.pack(fill="x", padx=10, pady=10)
-
-        # --- Кнопки ручного управления записью ---
-        self.manual_start_btn = ttk.Button(frame_buttons, text="Начать запись (ручная)", command=self.start_manual_recording)
-        self.manual_start_btn.pack(side="left", padx=5)
-
-        self.manual_stop_btn = ttk.Button(frame_buttons, text="Остановить запись (ручная)", command=self.stop_manual_recording)
-        self.manual_stop_btn.pack(side="left", padx=5)
-
-        copy_btn = ttk.Button(frame_buttons, text="Копировать в буфер", command=self.copy_current_message)
-        copy_btn.pack(side="left", padx=5)
-
-        apply_btn = ttk.Button(frame_buttons, text="Применить", command=self.apply_settings)
-        apply_btn.pack(side="left", padx=5)
-
-        save_btn = ttk.Button(frame_buttons, text="Сохранить", command=self.save_settings)
-        save_btn.pack(side="left", padx=5)
-
-        guide_btn = ttk.Button(frame_buttons, text="Краткое руководство", command=self.show_guide)
+        # --- Сервисные кнопки ---
+        frame_service = ttk.Frame(self)
+        frame_service.pack(fill="x", padx=10, pady=5)
+        copy_btn = ttk.Button(frame_service, text="Копировать в буфер", command=self.copy_current_message)
+        copy_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+        apply_btn = ttk.Button(frame_service, text="Применить", command=self.apply_settings)
+        apply_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+        save_btn = ttk.Button(frame_service, text="Сохранить", command=self.save_settings)
+        save_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+        guide_btn = ttk.Button(frame_service, text="Краткое руководство", command=self.show_guide)
+        guide_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
         guide_btn.pack(side="right", padx=5)
 
     def start_manual_recording(self):
