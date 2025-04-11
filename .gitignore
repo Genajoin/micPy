@@ -3,3 +3,4 @@ audio-info.py
 isgpu.py
 output.wav
 __pycache__
+settings.json
