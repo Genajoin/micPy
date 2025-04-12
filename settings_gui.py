@@ -27,6 +27,12 @@ class SettingsWindow(tk.Tk):
 
         self.load_settings()
         self.create_widgets()
+    def on_history_select(self, event):
+        selection = self.history_listbox.curselection()
+        if selection:
+            index = selection[0]
+            message = self.history_listbox.get(index)
+            self.current_message.set(message)
 
     def create_widgets(self):
         # --- Кнопка для транскрипции файла ---
@@ -49,6 +55,14 @@ class SettingsWindow(tk.Tk):
         timeout_entry = ttk.Entry(frame_settings, textvariable=self.record_timeout, width=10)
         timeout_entry.grid(row=2, column=1, padx=5, pady=5)
 
+        # --- Сервисные кнопки ---
+        frame_service = ttk.Frame(self)
+        frame_service.pack(fill="x", padx=10, pady=5)
+        apply_btn = ttk.Button(frame_service, text="Применить", command=self.apply_settings)
+        apply_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+        save_btn = ttk.Button(frame_service, text="Сохранить", command=self.save_settings)
+        save_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
+
         # --- Статус и сообщения ---
         frame_status = ttk.LabelFrame(self, text="Статус и сообщения")
         frame_status.pack(fill="x", padx=10, pady=10)
@@ -57,9 +71,9 @@ class SettingsWindow(tk.Tk):
         status_label = ttk.Label(frame_status, textvariable=self.status, foreground="blue")
         status_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
-        ttk.Label(frame_status, text="Текущее сообщение:").grid(row=1, column=0, sticky="nw", padx=5, pady=5)
-        current_msg_entry = ttk.Entry(frame_status, textvariable=self.current_message, state="readonly", width=50)
-        current_msg_entry.grid(row=1, column=1, padx=5, pady=5)
+        # ttk.Label(frame_status, text="Текущее сообщение:").grid(row=1, column=0, sticky="nw", padx=5, pady=5)
+        # current_msg_entry = ttk.Entry(frame_status, textvariable=self.current_message, state="readonly", width=50)
+        # current_msg_entry.grid(row=1, column=1, padx=5, pady=5)
 
         # --- Кнопки ручного управления записью ---
         frame_manual = ttk.Frame(self)
@@ -74,15 +88,8 @@ class SettingsWindow(tk.Tk):
         frame_history.pack(fill="both", expand=True, padx=10, pady=10)
         self.history_listbox = tk.Listbox(frame_history, height=8)
         self.history_listbox.pack(fill="both", expand=True, padx=5, pady=5)
-
-        # --- Сервисные кнопки ---
-        frame_service = ttk.Frame(self)
-        frame_service.pack(fill="x", padx=10, pady=5)
-        apply_btn = ttk.Button(frame_service, text="Применить", command=self.apply_settings)
-        apply_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
-        save_btn = ttk.Button(frame_service, text="Сохранить", command=self.save_settings)
-        save_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
-
+        self.history_listbox.bind("<<ListboxSelect>>", self.on_history_select)
+        
         # --- Копирование и справка ---
         frame_guide = ttk.Frame(self)
         frame_guide.pack(fill="x", padx=10, pady=5)
