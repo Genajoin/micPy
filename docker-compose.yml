@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: server/Dockerfile
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:${PORT:-8000}"
     deploy:
       resources:
         reservations:
@@ -13,8 +13,9 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    env_file:
+      - .env
     environment:
       - PYTHONPATH=/app
       - NVIDIA_VISIBLE_DEVICES=all
-      - WHISPER_MODEL_SIZE=medium
     restart: unless-stopped
