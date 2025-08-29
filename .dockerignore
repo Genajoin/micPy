@@ -1,0 +1,12 @@
+requirements.txt
+client/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+.venv/
+venv/
+.env

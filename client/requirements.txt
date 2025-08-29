@@ -1,0 +1,6 @@
+requests
+pyaudio
+pynput
+pyperclip
+soundfile
+pydantic

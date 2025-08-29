@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  micpy-server:
+    build: 
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - WHISPER_MODEL_SIZE=medium
+    restart: unless-stopped

@@ -18,9 +18,8 @@ class SettingsWindow(tk.Tk):
         self.resizable(False, False)
 
         # Переменные состояния
-        self.model_size = tk.StringVar(value=MODEL_SIZES[3])
-        self.use_gpu = tk.BooleanVar(value=False)
         self.record_timeout = tk.IntVar(value=30)
+        self.server_url = tk.StringVar(value="http://localhost:8000")
         self.status = tk.StringVar(value="Ожидание")
         self.current_message = tk.StringVar(value="")
         self.history = []
@@ -35,25 +34,27 @@ class SettingsWindow(tk.Tk):
             self.current_message.set(message)
 
     def create_widgets(self):
+        # --- Настройки сервера ---
+        frame_server = ttk.LabelFrame(self, text="Настройки сервера")
+        frame_server.pack(fill="x", padx=10, pady=5)
+        
+        ttk.Label(frame_server, text="URL сервера:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        server_entry = ttk.Entry(frame_server, textvariable=self.server_url, width=40)
+        server_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        frame_server.grid_columnconfigure(1, weight=1)
+
         # --- Кнопка для транскрипции файла ---
         frame_file = ttk.Frame(self)
         frame_file.pack(fill="x", padx=10, pady=5)
         file_btn = ttk.Button(frame_file, text="Выбрать файл для транскрипции", command=self.transcribe_file_dialog)
         file_btn.pack(side="left", padx=5, pady=5, fill="x", expand=True)
-        # --- Настройки модели ---
-        frame_settings = ttk.LabelFrame(self, text="Параметры модели")
+        # --- Настройки записи ---
+        frame_settings = ttk.LabelFrame(self, text="Настройки записи")
         frame_settings.pack(fill="x", padx=10, pady=10)
 
-        ttk.Label(frame_settings, text="Размер модели:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        model_menu = ttk.Combobox(frame_settings, textvariable=self.model_size, values=MODEL_SIZES, state="readonly")
-        model_menu.grid(row=0, column=1, padx=5, pady=5)
-
-        gpu_check = ttk.Checkbutton(frame_settings, text="Использовать GPU", variable=self.use_gpu)
-        gpu_check.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=5)
-
-        ttk.Label(frame_settings, text="Длительность записи (сек):").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        ttk.Label(frame_settings, text="Длительность записи (сек):").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         timeout_entry = ttk.Entry(frame_settings, textvariable=self.record_timeout, width=10)
-        timeout_entry.grid(row=2, column=1, padx=5, pady=5)
+        timeout_entry.grid(row=0, column=1, padx=5, pady=5)
 
         # --- Сервисные кнопки ---
         frame_service = ttk.Frame(self)
@@ -110,24 +111,51 @@ class SettingsWindow(tk.Tk):
         )
         if not filepath:
             return
-        if not self.model:
-            messagebox.showerror("Ошибка", "Модель не инициализирована.")
-            return
         try:
-            self.status.set("Транскрипция файла...")
+            self.status.set("Отправка файла на сервер...")
             self.update()
+            
+            # Читаем файл и отправляем на сервер
+            import requests
+            import base64
             import pyperclip
-            result = self.model.transcribe(filepath)
-            text = result.get("text", "")
-            self.current_message.set(text)
-            self.history.append(text)
-            self.history_listbox.insert("end", text)
-            try:
-                pyperclip.copy(text)
-                messagebox.showinfo("Готово", "Текст скопирован в буфер обмена.")
-            except Exception as e:
-                messagebox.showwarning("Внимание", f"Не удалось скопировать в буфер обмена: {e}")
-            self.status.set("Транскрипция завершена")
+            import sys
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
+            with open(filepath, 'rb') as f:
+                audio_base64 = base64.b64encode(f.read()).decode('utf-8')
+            
+            from common.schemas import TranscribeRequest, TranscribeResponse
+            request = TranscribeRequest(audio_data=audio_base64)
+            
+            response = requests.post(
+                f"{self.server_url.get()}/transcribe",
+                json=request.dict(),
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                result = TranscribeResponse(**response.json())
+                if result.success:
+                    text = result.text
+                    self.current_message.set(text)
+                    self.history.append(text)
+                    self.history_listbox.insert("end", text)
+                    try:
+                        pyperclip.copy(text)
+                        messagebox.showinfo("Готово", "Текст скопирован в буфер обмена.")
+                    except Exception as e:
+                        messagebox.showwarning("Внимание", f"Не удалось скопировать в буфер обмена: {e}")
+                    self.status.set("Транскрипция завершена")
+                else:
+                    messagebox.showerror("Ошибка", f"Ошибка сервера: {result.error}")
+                    self.status.set("Ошибка транскрипции")
+            else:
+                messagebox.showerror("Ошибка", f"Ошибка HTTP {response.status_code}")
+                self.status.set("Ошибка соединения")
+        except requests.exceptions.ConnectionError:
+            messagebox.showerror("Ошибка", "Не удается подключиться к серверу")
+            self.status.set("Ошибка соединения")
         except Exception as e:
             self.status.set("Ошибка транскрипции")
             messagebox.showerror("Ошибка транскрипции", str(e))
@@ -174,9 +202,8 @@ class SettingsWindow(tk.Tk):
 
     def save_settings(self):
         data = {
-            "model_size": self.model_size.get(),
-            "use_gpu": self.use_gpu.get(),
-            "record_timeout": self.record_timeout.get()
+            "record_timeout": self.record_timeout.get(),
+            "server_url": self.server_url.get()
         }
         try:
             with open(self.SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -190,8 +217,7 @@ class SettingsWindow(tk.Tk):
             try:
                 with open(self.SETTINGS_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                self.model_size.set(data.get("model_size", MODEL_SIZES[3]))
-                self.use_gpu.set(data.get("use_gpu", False))
+                self.server_url.set(data.get("server_url", "http://localhost:8000"))
                 self.record_timeout.set(data.get("record_timeout", 30))
             except Exception as e:
                 messagebox.showerror("micPy", f"Ошибка загрузки настроек: {e}")

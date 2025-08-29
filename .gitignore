@@ -1,6 +1,30 @@
+# IDE и редакторы
 .vscode/launch.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+venv/
+env/
+
+# Временные и пользовательские файлы
+settings.json
+*.wav
+*.tmp
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Claude Code инструкции (локальные)
+C*D.md
+
+# Устаревшие тестовые файлы
 audio-info.py
 isgpu.py
 output.wav
-__pycache__
-settings.json

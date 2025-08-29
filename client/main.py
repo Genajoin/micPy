@@ -1,12 +1,11 @@
 import io
 import os
+import sys
 import tempfile
 import getpass
 import threading
 import pyaudio
-import whisper
 import pyperclip
-import torch
 import soundfile as sf
 import time
 import atexit
@@ -14,6 +13,9 @@ import signal
 import logging
 from pynput import keyboard
 from single_instance import check_single_instance
+
+# Добавляем родительскую директорию в PYTHONPATH для импорта common
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -33,21 +35,18 @@ def load_settings():
             with open(settings_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return {
-                "model_path": data.get("model_size", "medium"),
-                "try_cuda": data.get("use_gpu", False),
+                "server_url": data.get("server_url", "http://localhost:8000"),
                 "timeout_duration": float(data.get("record_timeout", 30))
             }
         except Exception as e:
             log.warning(f"Ошибка загрузки настроек: {e}")
     return {
-        "model_path": "medium",
-        "try_cuda": False,
+        "server_url": "http://localhost:8000", 
         "timeout_duration": 30.0
     }
 
 settings = load_settings()
-model_path = settings["model_path"]
-try_cuda = settings["try_cuda"]
+server_url = settings["server_url"]
 # Параметры аудио потока
 FORMAT = pyaudio.paInt16  # Формат данных
 CHANNELS = 1             # Моно звук
@@ -94,7 +93,7 @@ def play_audio(filename):
     p.terminate()
 
 # --- Класс для управления записью и распознаванием ---
-from audio_recorder import AudioRecorder
+from audio_recorder_client import AudioRecorderClient
 
 # --- Основной запуск приложения ---
 if __name__ == "__main__":
@@ -118,9 +117,15 @@ if __name__ == "__main__":
         log.error("Этот скрипт уже запущен.")
         sys.exit()
 
-    device = 'cuda' if try_cuda and torch.cuda.is_available() else 'cpu'
-    log.info(f"Используем {device}")
-    model = whisper.load_model(model_path, device=device)
+    log.info(f"Подключаемся к серверу: {server_url}")
+    
+    # --- Проверка доступности сервера ---
+    try:
+        import requests
+        response = requests.get(f"{server_url}/status", timeout=5)
+        log.info(f"Сервер доступен: {response.json()}")
+    except Exception as e:
+        log.error(f"Не удается подключиться к серверу: {e}")
 
     # --- Транскрипция аудиофайла, если указан аргумент --file ---
     if args.file:
@@ -129,23 +134,42 @@ if __name__ == "__main__":
             log.error(f"Файл не найден: {audio_path}")
             sys.exit(1)
         try:
-            log.info(f"Транскрибируем файл: {audio_path}")
-            result = model.transcribe(audio_path)
-            text = result.get("text", "")
-            print("Распознанный текст:\n")
-            print(text)
-            try:
-                pyperclip.copy(text)
-                print("\nТекст скопирован в буфер обмена.")
-            except Exception as e:
-                print(f"Не удалось скопировать в буфер обмена: {e}")
+            log.info(f"Отправляем файл на сервер: {audio_path}")
+            # Читаем файл и кодируем в base64
+            with open(audio_path, 'rb') as f:
+                import base64
+                audio_base64 = base64.b64encode(f.read()).decode('utf-8')
+            
+            # Отправляем на сервер
+            import requests
+            from common.schemas import TranscribeRequest, TranscribeResponse
+            
+            request = TranscribeRequest(audio_data=audio_base64)
+            response = requests.post(f"{server_url}/transcribe", json=request.dict(), timeout=120)
+            
+            if response.status_code == 200:
+                result = TranscribeResponse(**response.json())
+                if result.success:
+                    print("Распознанный текст:\\n")
+                    print(result.text)
+                    try:
+                        pyperclip.copy(result.text)
+                        print("\\nТекст скопирован в буфер обмена.")
+                    except Exception as e:
+                        print(f"Не удалось скопировать в буфер обмена: {e}")
+                else:
+                    log.error(f"Ошибка транскрипции: {result.error}")
+                    sys.exit(2)
+            else:
+                log.error(f"Ошибка сервера: {response.status_code}")
+                sys.exit(2)
         except Exception as e:
-            log.error(f"Ошибка транскрипции: {e}")
+            log.error(f"Ошибка отправки файла: {e}")
             sys.exit(2)
         sys.exit(0)
 
-    recorder = AudioRecorder(
-        model=model,
+    recorder = AudioRecorderClient(
+        server_url=server_url,
         script_dir=script_dir,
         play_audio=play_audio,
         tmp_output_file=tmp_output_file,
@@ -156,6 +180,7 @@ if __name__ == "__main__":
         RATE=RATE,
         FRAMES_PER_BUFFER=FRAMES_PER_BUFFER,
     )
+    log.info("AudioRecorderClient создан")
 
     # --- Callback'и для потокобезопасного обновления GUI ---
     app = None
@@ -193,8 +218,9 @@ if __name__ == "__main__":
         app = SettingsWindow(
             manual_start_callback=manual_start,
             manual_stop_callback=manual_stop,
-            model=model
+            model=None
         )
+        log.info("SettingsWindow создан")
         # Передаем callback'и
         recorder.set_status_callback(gui_set_status)
         recorder.set_message_callback(gui_set_message)
@@ -231,6 +257,7 @@ if __name__ == "__main__":
 
         t = threading.Thread(target=listener_thread, daemon=True)
         t.start()
+        log.info("Listener thread запущен")
 
         # --- Запуск mainloop только в главном потоке ---
         app.mainloop()

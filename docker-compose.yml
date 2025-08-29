@@ -1,0 +1,21 @@
+
+services:
+  micpy-server:
+    build: 
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - NVIDIA_VISIBLE_DEVICES=all
+    restart: unless-stopped
