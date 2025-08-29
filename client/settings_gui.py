@@ -19,6 +19,7 @@ class SettingsWindow(tk.Tk):
 
         # Переменные состояния
         self.record_timeout = tk.IntVar(value=30)
+        self.server_url = tk.StringVar(value="http://localhost:8000")
         self.status = tk.StringVar(value="Ожидание")
         self.current_message = tk.StringVar(value="")
         self.history = []
@@ -38,7 +39,6 @@ class SettingsWindow(tk.Tk):
         frame_server.pack(fill="x", padx=10, pady=5)
         
         ttk.Label(frame_server, text="URL сервера:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.server_url = tk.StringVar(value="http://localhost:8000")
         server_entry = ttk.Entry(frame_server, textvariable=self.server_url, width=40)
         server_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         frame_server.grid_columnconfigure(1, weight=1)

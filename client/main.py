@@ -118,6 +118,14 @@ if __name__ == "__main__":
         sys.exit()
 
     log.info(f"Подключаемся к серверу: {server_url}")
+    
+    # --- Проверка доступности сервера ---
+    try:
+        import requests
+        response = requests.get(f"{server_url}/status", timeout=5)
+        log.info(f"Сервер доступен: {response.json()}")
+    except Exception as e:
+        log.error(f"Не удается подключиться к серверу: {e}")
 
     # --- Транскрипция аудиофайла, если указан аргумент --file ---
     if args.file:
@@ -172,6 +180,7 @@ if __name__ == "__main__":
         RATE=RATE,
         FRAMES_PER_BUFFER=FRAMES_PER_BUFFER,
     )
+    log.info("AudioRecorderClient создан")
 
     # --- Callback'и для потокобезопасного обновления GUI ---
     app = None
@@ -211,6 +220,7 @@ if __name__ == "__main__":
             manual_stop_callback=manual_stop,
             model=None
         )
+        log.info("SettingsWindow создан")
         # Передаем callback'и
         recorder.set_status_callback(gui_set_status)
         recorder.set_message_callback(gui_set_message)
@@ -247,6 +257,7 @@ if __name__ == "__main__":
 
         t = threading.Thread(target=listener_thread, daemon=True)
         t.start()
+        log.info("Listener thread запущен")
 
         # --- Запуск mainloop только в главном потоке ---
         app.mainloop()
