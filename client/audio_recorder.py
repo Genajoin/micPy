@@ -104,7 +104,10 @@ class AudioRecorder:
             result = self.model.transcribe(audio=self.tmp_output_file)
             transcribed_text = result['text']
             log.debug("Транскрибированный текст: %s", transcribed_text)
-            pyperclip.copy(result["text"])
+            try:
+                pyperclip.copy(result["text"])
+            except Exception as e:
+                log.warning(f"Не удалось скопировать в буфер обмена: {e}")
             if self.message_callback:
                 self.message_callback(transcribed_text)
             if self.history_callback:
