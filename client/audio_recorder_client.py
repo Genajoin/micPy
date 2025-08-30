@@ -372,18 +372,7 @@ class AudioRecorderClient:
             # Небольшая задержка чтобы звук успел начаться
             time.sleep(0.1)
             
-            # Пробуем Ctrl+Shift+V (для терминалов)
-            self.keyboard_controller.press(self.Key.ctrl)
-            self.keyboard_controller.press(self.Key.shift) 
-            self.keyboard_controller.press('v')
-            self.keyboard_controller.release('v')
-            self.keyboard_controller.release(self.Key.shift)
-            self.keyboard_controller.release(self.Key.ctrl)
-            
-            # Краткая пауза
-            time.sleep(0.03)
-            
-            # Затем пробуем обычный Ctrl+V (для остальных приложений)
+            # Используем обычный Ctrl+V
             self.keyboard_controller.press(self.Key.ctrl)
             self.keyboard_controller.press('v')
             self.keyboard_controller.release('v')
