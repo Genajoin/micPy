@@ -21,8 +21,7 @@ settings.json
 .DS_Store
 Thumbs.db
 
-# Claude Code инструкции (локальные)
-C*D.md
+C*E.md
 
 # Устаревшие тестовые файлы
 audio-info.py
