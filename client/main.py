@@ -11,6 +11,7 @@ import time
 import atexit
 import signal
 import logging
+import subprocess
 # from pynput import keyboard  # Импорт перенесен ниже
 from single_instance import check_single_instance
 
@@ -94,31 +95,30 @@ def cleanup():
 
 atexit.register(cleanup)
 
-# Функция воспроизведения звукового файла. В качестве параметра на вход принимает имя файла.
-def play_audio(filename):
-    log.info(f"play_audio: начинаем воспроизведение {filename}")
+# Функция воспроизведения системных звуков
+def play_sound(sound_type):
+    """
+    Воспроизводит системные звуки через canberra.
+    sound_type: 'start' для начала записи, 'end' для окончания
+    """
+    sound_name = 'bell' if sound_type == 'start' else 'message'
+    
+    log.info(f"play_sound: воспроизводим системный звук '{sound_name}' для события '{sound_type}'")
     try:
-        data, samplerate = sf.read(filename, dtype='int16')
-        # Определяем количество каналов из данных файла
-        channels = 1 if len(data.shape) == 1 else data.shape[1]
-        log.info(f"play_audio: файл {filename} - каналов: {channels}, частота: {samplerate}, размер данных: {len(data)}")
-        
-        # Создаем новый PyAudio экземпляр для каждого воспроизведения
-        log.info("play_audio: создаем PyAudio экземпляр")
-        p = pyaudio.PyAudio()
-        log.info("play_audio: создаем поток воспроизведения")
-        stream = p.open(format=FORMAT, channels=channels, rate=samplerate, output=True)
-        log.info("play_audio: записываем данные в поток")
-        stream.write(data.tobytes())
-        log.info("play_audio: останавливаем поток")
-        stream.stop_stream()
-        stream.close()
-        log.info("play_audio: закрываем PyAudio экземпляр")
-        p.terminate()
-        log.info(f"play_audio: воспроизведение {filename} завершено успешно")
+        result = subprocess.run(
+            ['canberra-gtk-play', '-i', sound_name],
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL,
+            timeout=2
+        )
+        if result.returncode == 0:
+            log.info(f"play_sound: звук '{sound_name}' воспроизведен успешно")
+        else:
+            log.warning(f"play_sound: ошибка воспроизведения звука '{sound_name}', код: {result.returncode}")
+    except subprocess.TimeoutExpired:
+        log.warning(f"play_sound: таймаут воспроизведения звука '{sound_name}'")
     except Exception as e:
-        log.error(f"play_audio: ошибка воспроизведения {filename}: {e}")
-        raise
+        log.error(f"play_sound: ошибка воспроизведения звука '{sound_name}': {e}")
 
 # --- Класс для управления записью и распознаванием ---
 from audio_recorder_client import AudioRecorderClient
@@ -258,7 +258,7 @@ if __name__ == "__main__":
     recorder = AudioRecorderClient(
         server_url=server_url,
         script_dir=script_dir,
-        play_audio=play_audio,
+        play_sound=play_sound,
         tmp_output_file=tmp_output_file,
         keyboard_controller=keyboard_controller,
         keyboard_key=keyboard.Key,

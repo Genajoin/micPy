@@ -21,14 +21,14 @@ log = logging.getLogger(__name__)
 class AudioRecorderClient:
     def __init__(
         self, server_url, script_dir,
-        play_audio, tmp_output_file, keyboard_controller, keyboard_key,
+        play_sound, tmp_output_file, keyboard_controller, keyboard_key,
         FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER,
         status_callback=None, message_callback=None, history_callback=None
     ):
         self.server_url = server_url.rstrip('/')
         self.script_dir = script_dir
-        self.play_audio = play_audio
-        log.info(f"AudioRecorderClient: инициализирован с play_audio={play_audio is not None}, script_dir={script_dir}")
+        self.play_sound = play_sound
+        log.info(f"AudioRecorderClient: инициализирован с play_sound={play_sound is not None}")
         self.tmp_output_file = tmp_output_file
         self.keyboard_controller = keyboard_controller
         self.Key = keyboard_key
@@ -79,13 +79,12 @@ class AudioRecorderClient:
 
     def _record(self, timeout):
         log.info("_record: метод запущен")
-        file_path = os.path.join(self.script_dir, "pop-alert.wav")
-        log.info(f"_record: пытаемся воспроизвести начальный звук {file_path}")
+        log.info("_record: воспроизводим звук начала записи")
         try:
-            self.play_audio(file_path)
-            log.info("_record: начальный звук воспроизведен")
+            self.play_sound('start')
+            log.info("_record: звук начала записи воспроизведен")
         except Exception as e:
-            log.error(f"_record: ошибка воспроизведения начального звука: {e}")
+            log.error(f"_record: ошибка воспроизведения звука начала: {e}")
         
         # Создаем новый PyAudio экземпляр для записи
         log.info("_record: создаем PyAudio экземпляр для записи")
@@ -193,5 +192,9 @@ class AudioRecorderClient:
             self.update_status(error_msg)
         finally:
             self.audio_data.clear()
-            file_path = os.path.join(self.script_dir, "pop-alert.wav")
-            self.play_audio(file_path)
+            log.info("transcribe_audio_remote: воспроизводим звук окончания записи")
+            try:
+                self.play_sound('end')
+                log.info("transcribe_audio_remote: звук окончания записи воспроизведен")
+            except Exception as e:
+                log.error(f"transcribe_audio_remote: ошибка воспроизведения звука окончания: {e}")
