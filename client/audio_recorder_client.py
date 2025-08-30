@@ -14,19 +14,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common.schemas import TranscribeRequest, TranscribeResponse
 from common.audio_utils import encode_audio_to_base64
+# text_inserter не используется, оставлена простая вставка
 
 log = logging.getLogger(__name__)
 
 class AudioRecorderClient:
     def __init__(
         self, server_url, script_dir,
-        play_audio, tmp_output_file, keyboard_controller, keyboard_key,
+        play_sound, tmp_output_file, keyboard_controller, keyboard_key,
         FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER,
         status_callback=None, message_callback=None, history_callback=None
     ):
         self.server_url = server_url.rstrip('/')
         self.script_dir = script_dir
-        self.play_audio = play_audio
+        self.play_sound = play_sound
+        log.info(f"AudioRecorderClient: инициализирован с play_sound={play_sound is not None}")
         self.tmp_output_file = tmp_output_file
         self.keyboard_controller = keyboard_controller
         self.Key = keyboard_key
@@ -40,6 +42,8 @@ class AudioRecorderClient:
         self.recording_active = False
         self.audio_data = []
         self.manual_mode = False
+        
+        # TextInserter убран, используется простая вставка
 
     def set_status_callback(self, cb):
         self.status_callback = cb
@@ -74,8 +78,16 @@ class AudioRecorderClient:
         self.recording_active = False
 
     def _record(self, timeout):
-        file_path = os.path.join(self.script_dir, "pop-long.wav")
-        self.play_audio(file_path)
+        log.info("_record: метод запущен")
+        log.info("_record: воспроизводим звук начала записи")
+        try:
+            self.play_sound('start')
+            log.info("_record: звук начала записи воспроизведен")
+        except Exception as e:
+            log.error(f"_record: ошибка воспроизведения звука начала: {e}")
+        
+        # Создаем новый PyAudio экземпляр для записи
+        log.info("_record: создаем PyAudio экземпляр для записи")
         audio = pyaudio.PyAudio()
         stream = audio.open(format=self.FORMAT,
                             channels=self.CHANNELS,
@@ -95,6 +107,7 @@ class AudioRecorderClient:
 
         stream.stop_stream()
         stream.close()
+        log.info("_record: завершаем PyAudio экземпляр для записи")
         audio.terminate()
         self.update_status("Запись завершена")
         log.info("Запись завершена")
@@ -136,11 +149,28 @@ class AudioRecorderClient:
                     if self.history_callback:
                         self.history_callback(transcribed_text)
                     
-                    # Автоматическая вставка
-                    self.keyboard_controller.press(self.Key.ctrl)
-                    self.keyboard_controller.press('v')
-                    self.keyboard_controller.release('v')
-                    self.keyboard_controller.release(self.Key.ctrl)
+                    # Умная автовставка - пробуем обе комбинации
+                    if self.keyboard_controller and self.Key:
+                        try:
+                            # Сначала пробуем Ctrl+Shift+V (для терминалов)
+                            self.keyboard_controller.press(self.Key.ctrl)
+                            self.keyboard_controller.press(self.Key.shift) 
+                            self.keyboard_controller.press('v')
+                            self.keyboard_controller.release('v')
+                            self.keyboard_controller.release(self.Key.shift)
+                            self.keyboard_controller.release(self.Key.ctrl)
+                            
+                            time.sleep(0.05)  # Короткая пауза
+                            
+                            # Затем пробуем обычный Ctrl+V (для остальных приложений)
+                            self.keyboard_controller.press(self.Key.ctrl)
+                            self.keyboard_controller.press('v')
+                            self.keyboard_controller.release('v')
+                            self.keyboard_controller.release(self.Key.ctrl)
+                            
+                            log.info("Автовставка выполнена (обе комбинации)")
+                        except Exception as e:
+                            log.warning(f"Ошибка автовставки: {e}")
                     
                     self.update_status("Готово")
                 else:
@@ -162,5 +192,9 @@ class AudioRecorderClient:
             self.update_status(error_msg)
         finally:
             self.audio_data.clear()
-            file_path = os.path.join(self.script_dir, "pop-alert.wav")
-            self.play_audio(file_path)
+            log.info("transcribe_audio_remote: воспроизводим звук окончания записи")
+            try:
+                self.play_sound('end')
+                log.info("transcribe_audio_remote: звук окончания записи воспроизведен")
+            except Exception as e:
+                log.error(f"transcribe_audio_remote: ошибка воспроизведения звука окончания: {e}")

@@ -25,12 +25,15 @@ pip install -r requirements.txt
 
 ## Архитектура проекта
 
-### Основные модули
+### Основные модули (клиент)
 
-- **main.py** (236 строк) - точка входа, инициализация Whisper модели, обработка аргументов CLI, настройка hotkeys и GUI callbacks
-- **settings_gui.py** (220 строк) - графический интерфейс на Tkinter с настройками модели, управлением записью и историей сообщений
-- **audio_recorder.py** (124 строк) - класс AudioRecorder для управления записью аудио через pyaudio и транскрипцией через Whisper
-- **single_instance.py** (13 строк) - предотвращение запуска нескольких экземпляров приложения
+- **main.py** (~340 строк) - точка входа, инициализация, обработка CLI аргументов, настройка IPC/D-Bus сервисов и GUI callbacks
+- **settings_gui.py** (220 строк) - графический интерфейс на Tkinter с настройками, управлением записью и историей сообщений  
+- **audio_recorder_client.py** (166 строк) - клиент для отправки аудио на сервер Whisper
+- **dbus_service.py** - D-Bus сервис com.micpy.Recorder для системных горячих клавиш
+- **ipc_server.py** - Unix Domain Socket сервер для межпроцессного взаимодействия
+- **single_instance.py** (13 строк) - предотвращение запуска нескольких экземпляров
+- **scripts/mic_*.sh** - bash скрипты для интеграции с системными горячими клавишами
 
 ### Паттерн архитектуры
 
@@ -46,10 +49,30 @@ pip install -r requirements.txt
 - Поддерживает модели Whisper: tiny, base, small, medium, large
 - GPU поддержка через CUDA (torch.cuda.is_available())
 
-### Hotkeys
+### Управление записью
 
+#### CLI команды (рекомендуется)
+```bash
+python main.py --start     # Начать запись
+python main.py --stop      # Остановить запись
+python main.py --toggle    # Переключить запись
+python main.py --status    # Получить статус
+python main.py --quit      # Завершить приложение
+```
+
+#### Системные горячие клавиши
+- Настраиваются через Ubuntu Settings → Keyboard → Custom Shortcuts
+- Используют скрипты из `client/scripts/`
+- Работают надежно во всех приложениях
+
+#### IPC интерфейсы
+- **Unix Domain Socket**: всегда доступен, файл `/tmp/micpy-{user}.sock`
+- **D-Bus сервис**: `com.micpy.Recorder` (требует python3-dbus)
+
+#### Старые hotkeys (нестабильно)
 - **Ctrl + PrintScreen** - начать/остановить запись
 - **Ctrl + Ctrl + PrintScreen** - завершить программу
+- Требует флаг `--use-pynput`
 
 ### Звуковые эффекты
 

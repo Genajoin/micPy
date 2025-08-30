@@ -66,8 +66,8 @@ class AudioRecorder:
         self.recording_active = False
 
     def _record(self, timeout):
-        file_path = os.path.join(self.script_dir, "pop-long.wav")
-        self.play_audio(file_path)
+        # Старый класс больше не используется, но обновляем для совместимости
+        pass  # Убрали воспроизведение звука из старого класса
         audio = pyaudio.PyAudio()
         stream = audio.open(format=self.FORMAT,
                             channels=self.CHANNELS,
@@ -118,8 +118,7 @@ class AudioRecorder:
         self.keyboard_controller.release('v')
         self.keyboard_controller.release(self.Key.ctrl)
         self.audio_data.clear()
-        file_path = os.path.join(self.script_dir, "pop-alert.wav")
-        self.play_audio(file_path)
+        # Убрали воспроизведение звука - используются системные звуки в новом клиенте
         # Удаляем временный аудиофайл после использования
         try:
             os.remove(self.tmp_output_file)
