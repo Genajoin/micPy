@@ -6,7 +6,6 @@ import getpass
 import threading
 import pyaudio
 import pyperclip
-import soundfile as sf
 import time
 import atexit
 import signal

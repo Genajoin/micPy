@@ -2,7 +2,6 @@ requests
 pyaudio
 pynput
 pyperclip
-soundfile
 pydantic
 pydbus
 PyGObject
