@@ -290,6 +290,10 @@ if __name__ == "__main__":
         if app and hasattr(app, "add_to_history"):
             app.after(0, app.add_to_history, msg)
 
+    def gui_update_connection_status(connected, status_text=""):
+        if app and hasattr(app, "update_connection_status"):
+            app.after(0, app.update_connection_status, connected, status_text)
+
     # --- Запуск GUI ---
     if SettingsWindow is not None:
         def manual_start():
@@ -312,6 +316,7 @@ if __name__ == "__main__":
         recorder.set_status_callback(gui_set_status)
         recorder.set_message_callback(gui_set_message)
         recorder.set_history_callback(gui_add_history)
+        recorder.set_connection_status_callback(gui_update_connection_status)
 
         # --- Запуск IPC сервера для внешних команд ---
         from ipc_server import IPCServer
@@ -367,10 +372,12 @@ if __name__ == "__main__":
             log.info("Используйте CLI команды или системные горячие клавиши для управления записью")
             log.info("Команды: python main.py --start, --stop, --toggle, --status, --quit")
 
-        # --- Очистка IPC сервера при завершении ---
+        # --- Очистка IPC сервера и health check при завершении ---
         def cleanup_ipc():
             if 'ipc_server' in locals():
                 ipc_server.stop_server()
+            if 'recorder' in locals():
+                recorder.stop_health_check()
                 
         atexit.register(cleanup_ipc)
         

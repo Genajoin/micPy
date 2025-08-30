@@ -69,8 +69,14 @@ class SettingsWindow(tk.Tk):
         frame_status.pack(fill="x", padx=10, pady=10)
 
         ttk.Label(frame_status, text="Статус:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        status_label = ttk.Label(frame_status, textvariable=self.status, foreground="blue")
-        status_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        self.status_label = ttk.Label(frame_status, textvariable=self.status, foreground="blue")
+        self.status_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        
+        # Индикатор соединения
+        ttk.Label(frame_status, text="Соединение:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.connection_status = tk.StringVar(value="Проверка...")
+        self.connection_label = ttk.Label(frame_status, textvariable=self.connection_status, foreground="orange")
+        self.connection_label.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
         # ttk.Label(frame_status, text="Текущее сообщение:").grid(row=1, column=0, sticky="nw", padx=5, pady=5)
         # current_msg_entry = ttk.Entry(frame_status, textvariable=self.current_message, state="readonly", width=50)
@@ -241,6 +247,15 @@ class SettingsWindow(tk.Tk):
         if len(self.history) > 20:
             self.history.pop()
             self.history_listbox.delete(20)
+
+    def update_connection_status(self, connected, status_text=""):
+        """Обновление статуса соединения в GUI"""
+        if connected:
+            self.connection_status.set("Подключено")
+            self.connection_label.configure(foreground="green")
+        else:
+            self.connection_status.set(status_text or "Отключено")
+            self.connection_label.configure(foreground="red")
 
 if __name__ == "__main__":
     app = SettingsWindow()
