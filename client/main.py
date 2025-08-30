@@ -11,7 +11,7 @@ import time
 import atexit
 import signal
 import logging
-from pynput import keyboard
+# from pynput import keyboard  # Импорт перенесен ниже
 from single_instance import check_single_instance
 
 # Добавляем родительскую директорию в PYTHONPATH для импорта common
@@ -36,13 +36,15 @@ def load_settings():
                 data = json.load(f)
             return {
                 "server_url": data.get("server_url", "http://localhost:8000"),
-                "timeout_duration": float(data.get("record_timeout", 30))
+                "timeout_duration": float(data.get("record_timeout", 30)),
+                "text_insert_method": data.get("text_insert_method", "auto")
             }
         except Exception as e:
             log.warning(f"Ошибка загрузки настроек: {e}")
     return {
         "server_url": "http://localhost:8000", 
-        "timeout_duration": 30.0
+        "timeout_duration": 30.0,
+        "text_insert_method": "auto"
     }
 
 settings = load_settings()
@@ -67,8 +69,19 @@ audio_data = []
 
 instance_running, lock_file = check_single_instance(lock_file_path)
 recording_active = False # Флаг для записи
-pressed_keys = set() # Множество для отслеживания текущих нажатых клавиш
+
+# Импорт pynput как в оригинале
+from pynput import keyboard
+pressed_keys = set()
 keyboard_controller = keyboard.Controller()
+use_pynput_hotkeys = '--use-pynput' in sys.argv
+
+if use_pynput_hotkeys:
+    log.info("Используется pynput для горячих клавиш")
+else:
+    log.info("pynput доступен для вставки текста")
+
+log.info("PyAudio будет создаваться для каждого воспроизведения")
 
 def cleanup():
     global lock_file
@@ -83,14 +96,29 @@ atexit.register(cleanup)
 
 # Функция воспроизведения звукового файла. В качестве параметра на вход принимает имя файла.
 def play_audio(filename):
-    data, samplerate = sf.read(filename, dtype='int16')
-    # Используем pyaudio для воспроизведения аудио
-    p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT, channels=CHANNELS, rate=samplerate, output=True)
-    stream.write(data.tobytes())
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
+    log.info(f"play_audio: начинаем воспроизведение {filename}")
+    try:
+        data, samplerate = sf.read(filename, dtype='int16')
+        # Определяем количество каналов из данных файла
+        channels = 1 if len(data.shape) == 1 else data.shape[1]
+        log.info(f"play_audio: файл {filename} - каналов: {channels}, частота: {samplerate}, размер данных: {len(data)}")
+        
+        # Создаем новый PyAudio экземпляр для каждого воспроизведения
+        log.info("play_audio: создаем PyAudio экземпляр")
+        p = pyaudio.PyAudio()
+        log.info("play_audio: создаем поток воспроизведения")
+        stream = p.open(format=FORMAT, channels=channels, rate=samplerate, output=True)
+        log.info("play_audio: записываем данные в поток")
+        stream.write(data.tobytes())
+        log.info("play_audio: останавливаем поток")
+        stream.stop_stream()
+        stream.close()
+        log.info("play_audio: закрываем PyAudio экземпляр")
+        p.terminate()
+        log.info(f"play_audio: воспроизведение {filename} завершено успешно")
+    except Exception as e:
+        log.error(f"play_audio: ошибка воспроизведения {filename}: {e}")
+        raise
 
 # --- Класс для управления записью и распознаванием ---
 from audio_recorder_client import AudioRecorderClient
@@ -103,6 +131,14 @@ if __name__ == "__main__":
 
     def handle_signal(signum, frame):
         log.info("Signal received, exiting...")
+        # Принудительно завершаем GUI если есть
+        global app
+        if app:
+            try:
+                app.quit()
+                app.destroy()
+            except:
+                pass
         cleanup()
         os._exit(0)
 
@@ -111,11 +147,62 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="micPy: голосовой ввод и транскрипция аудиофайлов")
     parser.add_argument("-f", "--file", type=str, help="Путь к аудиофайлу (wav, mp3, flac и др.) для транскрипции")
+    parser.add_argument("--start", action="store_true", help="Начать запись (отправить команду работающему экземпляру)")
+    parser.add_argument("--stop", action="store_true", help="Остановить запись (отправить команду работающему экземпляру)")
+    parser.add_argument("--toggle", action="store_true", help="Переключить запись (отправить команду работающему экземпляру)")
+    parser.add_argument("--status", action="store_true", help="Получить статус работающего экземпляра")
+    parser.add_argument("--quit", action="store_true", help="Завершить работающий экземпляр")
+    parser.add_argument("--use-pynput", action="store_true", help="Использовать pynput для горячих клавиш (старое поведение)")
     args = parser.parse_args()
 
+    # --- Проверка на CLI команды для отправки работающему экземпляру ---
+    cli_commands = args.start or args.stop or args.toggle or args.status or args.quit
+    
+    if cli_commands:
+        if not instance_running:
+            # Есть запущенный экземпляр, отправляем команду
+            from ipc_server import send_command
+            
+            if args.start:
+                log.info("Отправка команды START работающему экземпляру")
+                result = send_command("START")
+                log.info(f"Результат команды START: {result}")
+                print(f"Команда START: {result}")
+                sys.exit(0)
+            elif args.stop:
+                log.info("Отправка команды STOP работающему экземпляру")
+                result = send_command("STOP")
+                log.info(f"Результат команды STOP: {result}")
+                print(f"Команда STOP: {result}")
+                sys.exit(0)
+            elif args.toggle:
+                log.info("Отправка команды TOGGLE работающему экземпляру")
+                result = send_command("TOGGLE")
+                log.info(f"Результат команды TOGGLE: {result}")
+                print(f"Команда TOGGLE: {result}")
+                sys.exit(0)
+            elif args.status:
+                log.info("Запрос статуса у работающего экземпляра")
+                result = send_command("STATUS")
+                log.info(f"Результат запроса STATUS: {result}")
+                print(f"Статус: {result}")
+                sys.exit(0)
+            elif args.quit:
+                log.info("Отправка команды QUIT работающему экземпляру")
+                result = send_command("QUIT")
+                log.info(f"Результат команды QUIT: {result}")
+                print(f"Команда QUIT: {result}")
+                sys.exit(0)
+        else:
+            # Экземпляр не запущен
+            log.error("micPy не запущен. Сначала запустите основное приложение: python main.py")
+            print("❌ micPy не запущен. Запустите: python main.py")
+            sys.exit(1)
+    
+    # --- Проверка на множественный запуск основного приложения ---
     if not instance_running:
-        log.error("Этот скрипт уже запущен.")
-        sys.exit()
+        log.error("Этот скрипт уже запущен. Используйте CLI команды для управления.")
+        sys.exit(1)
 
     log.info(f"Подключаемся к серверу: {server_url}")
     
@@ -178,12 +265,13 @@ if __name__ == "__main__":
         FORMAT=FORMAT,
         CHANNELS=CHANNELS,
         RATE=RATE,
-        FRAMES_PER_BUFFER=FRAMES_PER_BUFFER,
+        FRAMES_PER_BUFFER=FRAMES_PER_BUFFER
     )
+    recorder.timeout_duration = timeout_duration
     log.info("AudioRecorderClient создан")
 
     # --- Callback'и для потокобезопасного обновления GUI ---
-    app = None
+    app = None  # Глобальная переменная для GUI
     def gui_set_status(status):
         if app and hasattr(app, "status"):
             app.after(0, app.status.set, status)
@@ -226,38 +314,69 @@ if __name__ == "__main__":
         recorder.set_message_callback(gui_set_message)
         recorder.set_history_callback(gui_add_history)
 
-        # --- Запуск Listener в отдельном потоке ---
-        def listener_thread():
-            def on_press(key):
-                global pressed_keys
-                pressed_keys.add(key)
-                if key == keyboard.Key.print_screen:
-                    if keyboard.Key.ctrl in pressed_keys and keyboard.Key.ctrl_r in pressed_keys:
-                        log.info("Ctrl + Ctrl + PrtScr нажато, завершаем программу...")
-                        handle_signal(signal.SIGTERM, None)
-                    elif keyboard.Key.ctrl in pressed_keys:
-                        if not recorder.recording_active:
-                            recorder.start_recording(timeout=timeout_duration)
-                        else:
-                            recorder.stop_recording()
-                        log.info(f"Ctrl + PrtScr нажато, запись {'активирована' if recorder.recording_active else 'деактивирована'}")
+        # --- Запуск IPC сервера для внешних команд ---
+        from ipc_server import IPCServer
+        ipc_server = IPCServer(recorder, timeout_duration)
+        ipc_server.start_server()
+        
+        # --- Опциональный запуск D-Bus сервиса ---
+        dbus_service = None
+        try:
+            from dbus_service import MicPyRecorderService
+            dbus_service = MicPyRecorderService(recorder)
+            threading.Thread(target=dbus_service.start_service, daemon=True).start()
+            log.info("D-Bus сервис запущен")
+        except ImportError:
+            log.warning("D-Bus недоступен, используется только IPC")
+        except Exception as e:
+            log.warning(f"Ошибка запуска D-Bus сервиса: {e}")
+        
+        # --- Опциональный запуск pynput Listener ---
+        if use_pynput_hotkeys and keyboard and keyboard_controller:
+            def listener_thread():
+                def on_press(key):
+                    global pressed_keys
+                    pressed_keys.add(key)
+                    if key == Key.print_screen:
+                        if Key.ctrl in pressed_keys and Key.ctrl_r in pressed_keys:
+                            log.info("Ctrl + Ctrl + PrtScr нажато, завершаем программу...")
+                            handle_signal(signal.SIGTERM, None)
+                        elif Key.ctrl in pressed_keys:
+                            if not recorder.recording_active:
+                                recorder.start_recording(timeout=timeout_duration)
+                            else:
+                                recorder.stop_recording()
+                            log.info(f"Ctrl + PrtScr нажато, запись {'активирована' if recorder.recording_active else 'деактивирована'}")
 
-            def on_release(key):
-                try:
-                    pressed_keys.remove(key)
-                except KeyError:
-                    pass
+                def on_release(key):
+                    try:
+                        pressed_keys.remove(key)
+                    except KeyError:
+                        pass
 
-            with keyboard.Listener(
-                    on_press=on_press,
-                    on_release=on_release) as listener:
-                log.info("Нажмите Ctrl + PrtScr чтобы активировать или деактивировать запись.")
-                log.info("Нажмите Ctrl + Ctrl + PrtScr чтобы завершить программу.")
-                listener.join()
+                with keyboard.Listener(
+                        on_press=on_press,
+                        on_release=on_release) as listener:
+                    log.info("Нажмите Ctrl + PrtScr чтобы активировать или деактивировать запись.")
+                    log.info("Нажмите Ctrl + Ctrl + PrtScr чтобы завершить программу.")
+                    listener.join()
 
-        t = threading.Thread(target=listener_thread, daemon=True)
-        t.start()
-        log.info("Listener thread запущен")
+            t = threading.Thread(target=listener_thread, daemon=True)
+            t.start()
+            log.info("pynput Listener thread запущен")
+        else:
+            log.info("Используйте CLI команды или системные горячие клавиши для управления записью")
+            log.info("Команды: python main.py --start, --stop, --toggle, --status, --quit")
 
+        # --- Очистка IPC сервера при завершении ---
+        def cleanup_ipc():
+            if 'ipc_server' in locals():
+                ipc_server.stop_server()
+                
+        atexit.register(cleanup_ipc)
+        
         # --- Запуск mainloop только в главном потоке ---
-        app.mainloop()
+        try:
+            app.mainloop()
+        finally:
+            cleanup_ipc()

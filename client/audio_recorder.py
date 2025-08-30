@@ -66,7 +66,7 @@ class AudioRecorder:
         self.recording_active = False
 
     def _record(self, timeout):
-        file_path = os.path.join(self.script_dir, "pop-long.wav")
+        file_path = os.path.join(self.script_dir, "pop-alert.wav")
         self.play_audio(file_path)
         audio = pyaudio.PyAudio()
         stream = audio.open(format=self.FORMAT,
