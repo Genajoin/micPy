@@ -1,34 +1,14 @@
 # micPy
 
-**Система записи аудио с распознаванием речи через Whisper с клиент-серверной архитектурой**
+**Speech-to-Text клиент для Parakeet API**
 
-micPy — это приложение для записи аудио с микрофона и транскрипции аудиофайлов, построенное на клиент-серверной архитектуре. Лёгкий клиент с графическим интерфейсом отправляет аудио на сервер с Whisper для обработки на GPU, что обеспечивает быструю транскрипцию без необходимости локальной установки ML-библиотек.
+micPy — это терминальный клиент для распознавания речи через Parakeet API. Поддерживает интерактивный TUI редактор и фоновый демон для голосового ввода по триггеру.
 
 ---
 
 ## 🚀 Быстрый старт
 
-### Вариант 1: Docker (рекомендуется)
-
-1. Запустите сервер:
-   ```bash
-   docker-compose up -d
-   ```
-
-2. Установите зависимости клиента:
-   ```bash
-   cd client
-   pip install -r requirements.txt
-   ```
-
-3. Запустите клиент:
-   ```bash
-   python main.py
-   ```
-
-### Вариант 2: Локальная установка
-
-#### Системные зависимости для клиента
+### Системные зависимости
 
 **Linux (Ubuntu/Debian):**
 ```bash
@@ -41,235 +21,168 @@ sudo apt install portaudio19-dev python3-pyaudio xclip
 brew install portaudio
 ```
 
-#### Установка клиента
+### Установка
 
-1. Клонируйте репозиторий:
-   ```bash
-   git clone https://github.com/Genajoin/micPy.git
-   cd micPy/client
-   ```
-
-2. Создайте virtualenv:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/MacOS || venv\Scripts\activate  # Windows
-   ```
-
-3. Установите зависимости:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-#### Установка сервера
-
-1. Установите системные зависимости:
-   ```bash
-   # Linux
-   sudo apt install ffmpeg
-   
-   # macOS
-   brew install ffmpeg
-   ```
-
-2. Установите Python зависимости:
-   ```bash
-   cd server
-   pip install -r requirements.txt
-   ```
-
-3. Запустите сервер:
-   ```bash
-   python main.py
-   ```
+```bash
+git clone https://github.com/Genajoin/micPy.git
+cd micPy
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
 
 ---
 
 ## 📱 Использование
 
-### Запуск клиента
+### Команды
 
 ```bash
-cd client
-python main.py
+micpy                          # TUI редактор (интерактивный)
+micpy --api-url http://localhost:5092/v1  # Указать API URL
+micpy --test                   # Тестовый режим
+
+micpy daemon                   # Фоновый сервис голосового ввода
+micpy trigger                  # Отправить триггер на демон
+
+mic-stream                     # Алиас для micpy
 ```
 
-### Конфигурация сервера
+### TUI Редактор
 
-Настройте сервер через переменные окружения в `docker-compose.yml` или `.env`:
+Интерактивный терминальный редактор с голосовым вводом:
+
+| Клавиша | Действие |
+|---------|----------|
+| F1 | Показать/скрыть справку |
+| F5 | Начать/остановить запись |
+| F3 | Копировать весь текст |
+| F8 | Очистить текст |
+| Ctrl+A | Выделить все |
+| Ctrl+C / Ctrl+Q | Выход |
+
+### Фоновый демон
+
+Для голосового ввода по горячей клавише:
+
+1. Запустите демон:
+   ```bash
+   micpy daemon &
+   ```
+
+2. Привяжите триггер к хоткею в DE:
+   ```bash
+   micpy trigger
+   ```
+
+   **GNOME:** Settings → Keyboard → Custom Shortcuts
+   **KDE:** System Settings → Shortcuts
+
+3. Нажмите хоткей для начала записи, ещё раз — для остановки и транскрипции
+
+### Запуск демона через systemd
+
+Для автозапуска демона при входе в систему:
+
+1. Создайте файл сервиса:
+   ```bash
+   nano ~/.config/systemd/user/micpy-daemon.service
+   ```
+
+2. Содержимое файла:
+   ```ini
+   [Unit]
+   Description=MicPy Voice Input Daemon
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/path/to/micPy
+   ExecStart=/path/to/micPy/.venv/bin/micpy daemon
+   Restart=on-failure
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   Замените `/path/to/micPy` на реальный путь к проекту.
+
+3. Активируйте сервис:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable micpy-daemon
+   systemctl --user start micpy-daemon
+   ```
+
+4. Проверьте статус:
+   ```bash
+   systemctl --user status micpy-daemon
+   ```
+
+5. Логи:
+   ```bash
+   journalctl --user -u micpy-daemon -f
+   ```
+
+---
+
+## ⚙️ Конфигурация
+
+### Переменные окружения
+
+Создайте `.env` файл:
 
 ```bash
-WHISPER_MODEL_SIZE=medium  # tiny, base, small, medium, large
-PORT=8000
+PARAKEET_API_URL=http://localhost:5092/v1
+PARAKEET_MODEL=parakeet-tdt-0.6b-v3
 ```
 
-### Транскрипция аудиофайла (CLI)
+Поиск `.env`:
+- `./.env`
+- `~/.env`
+- `~/micpy.env`
+- `~/.config/micpy/.env`
 
-Для распознавания текста из готового аудиофайла используйте:
-```bash
-cd client
-python main.py --file путь/к/вашему/файлу.mp3
-```
+### Аргументы
 
-### Графический интерфейс
-
-![image.png](image.png)
-
-Клиент предоставляет простой интерфейс:
-- **URL сервера** — адрес сервера распознавания (по умолчанию http://localhost:8000)
-- **Длительность записи** — максимальное время записи в автоматическом режиме
-- **Кнопка транскрипции файла** — выбор и обработка готовых аудиофайлов
-- **Ручное управление записью** — кнопки "Начать/Остановить запись" 
-- **История сообщений** — последние результаты транскрипции
-- **Статус** — текущее состояние работы
-
-Настройки сохраняются в `client/settings.json`.
-
-### Режимы управления
-
-#### 1. Ручной режим (в GUI)
-- **Кнопки "Начать/Остановить запись"** — запись не ограничена таймером
-
-#### 2. CLI команды (рекомендуется для системных горячих клавиш)
-```bash
-python main.py --start    # Начать запись
-python main.py --stop     # Остановить запись  
-python main.py --toggle   # Переключить запись
-python main.py --status   # Получить статус
-python main.py --quit     # Завершить приложение
-```
-
-#### 3. Системные горячие клавиши Ubuntu
-
-**Пошаговая настройка:**
-
-1. Откройте **Settings → Keyboard → View and Customize Shortcuts**
-2. Прокрутите вниз и нажмите **Custom Shortcuts**
-3. Нажмите **Add Shortcut** и создайте ярлыки:
-
-**Основное управление:**
-- **Название**: micPy Toggle Recording
-- **Команда**: `/home/gena/dev/micPy/client/scripts/mic_toggle.sh`
-- **Сочетание**: Ctrl+PrintScreen
-
-**Дополнительные команды:**
-- **Название**: micPy Start Recording  
-- **Команда**: `/home/gena/dev/micPy/client/scripts/mic_start.sh`
-- **Сочетание**: Ctrl+Alt+R
-
-- **Название**: micPy Stop Recording
-- **Команда**: `/home/gena/dev/micPy/client/scripts/mic_stop.sh`  
-- **Сочетание**: Ctrl+Alt+T
-
-💡 **Важно:** 
-- Замените `/home/gena/dev/micPy` на ваш реальный путь к проекту
-- Скрипты автоматически найдут правильный Python (venv → conda → системный)
-- Перед использованием горячих клавиш запустите основное приложение: `python main.py`
-
-#### 4. D-Bus интерфейс (для продвинутых пользователей)
-```bash
-# Через D-Bus
-dbus-send --session --dest=com.micpy.Recorder \
-  --type=method_call /com/micpy/Recorder \
-  com.micpy.Recorder.ToggleRecording
-```
-
-#### 5. Старый режим (pynput)
-```bash
-python main.py --use-pynput
-```
-- **Ctrl + PrintScreen** — переключить запись
-- **Ctrl + Ctrl + PrintScreen** — завершить программу
-
-⚠️ **Старый режим работает нестабильно в терминалах**
-
-### Процесс работы
-
-1. **Запуск сервера** — обрабатывает аудио через Whisper на GPU
-2. **Запуск клиента** — предоставляет интерфейс записи и управления
-3. **Запись аудио**:
-   - **Системные горячие клавиши**: Ctrl + PrintScreen (рекомендуется)
-   - **CLI команды**: `python main.py --toggle`
-   - **Ручное управление**: кнопки в GUI
-   - Воспроизводятся системные звуковые сигналы (`bell`, `message`) через canberra
-4. **Обработка**:
-   - Аудио кодируется в base64 и отправляется на сервер
-   - Сервер транскрибирует через Whisper
-   - Результат возвращается клиенту
-5. **Результат**:
-   - Текст копируется в буфер обмена
-   - Автоматически вставляется в активное окно (Ctrl+V)
-   - Добавляется в историю сообщений
-
-### Установка системных зависимостей для D-Bus
-
-```bash
-# Ubuntu/Debian
-sudo apt install python3-dbus python3-gi
-
-# Архитектура
-# Клиент поддерживает несколько способов управления:
-# 1. IPC через Unix Domain Socket (работает всегда)
-# 2. D-Bus сервис (требует python3-dbus)
-# 3. Старый pynput режим (флаг --use-pynput)
-```
+| Аргумент | По умолчанию | Описание |
+|----------|--------------|----------|
+| `--api-url` | http://localhost:5092/v1 | URL Parakeet API |
+| `--model` | parakeet-tdt-0.6b-v3 | Модель транскрипции |
+| `--test` | - | Тестовый режим |
 
 ---
 
 ## 🏗️ Архитектура
 
-### Клиент-серверная модель
-
-- **Клиент** (`client/`) — лёгкий интерфейс без ML-зависимостей
-- **Сервер** (`server/`) — FastAPI с Whisper на GPU для быстрой обработки
-- **Общие модули** (`common/`) — схемы данных и утилиты
-
-### Структура проекта
-
 ```
 micPy/
-├── client/                    # Клиентское приложение
-│   ├── main.py               # Точка входа клиента
-│   ├── settings_gui.py       # Графический интерфейс 
-│   ├── audio_recorder_client.py  # Запись и отправка на сервер
-│   ├── single_instance.py    # Предотвращение множественных запусков
-│   └── requirements.txt      # Зависимости клиента
-├── server/                   # Сервер обработки
-│   ├── main.py               # FastAPI сервер с Whisper
-│   ├── requirements.txt      # Зависимости сервера
-│   └── Dockerfile           # Контейнеризация сервера
-├── common/                   # Общие компоненты
-│   ├── schemas.py           # Pydantic схемы API
-│   └── audio_utils.py       # Утилиты работы с аудио
-├── docker-compose.yml        # Продакшн конфигурация
-├── docker-compose.dev.yml    # Конфигурация для разработки
-└── .env.example             # Пример переменных окружения
+├── client/
+│   ├── cli.py                # CLI точка входа
+│   ├── minimal_editor.py     # TUI редактор
+│   ├── voice_daemon.py       # Фоновый демон
+│   ├── audio_buffer.py       # Захват аудио
+│   ├── parakeet_client.py    # HTTP клиент к API
+│   └── single_instance.py    # Блокировка повторных запусков
+├── pyproject.toml
+└── README.md
 ```
 
-## ⚙️ Конфигурация
+---
 
-### Переменные окружения сервера
+## 🔗 Требования к API
 
-- `WHISPER_MODEL_SIZE` — размер модели (tiny, base, small, medium, large)
-- `PORT` — порт API сервера
+Требуется Parakeet API с OpenAI-совместимым эндпоинтом:
 
-### Настройки клиента
-
-- Сохраняются в `client/settings.json`
-- URL сервера, длительность записи
+- `POST /v1/audio/transcriptions` — транскрипция аудио
+- `GET /health` — проверка доступности (опционально)
 
 ---
 
-## 🛠️ Инструменты и библиотеки
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/Genajoin/micPy/bandit.yml)](https://github.com/Genajoin/micPy/actions)
-[![CodeFactor](https://img.shields.io/codefactor/grade/github/Genajoin/micPy?style=flat-square)](https://www.codefactor.io/repository/github/Genajoin/micPy)
+## 👤 Автор
 
----
-
-## 👤 Авторы
-
-- [Истомин Евгений]
-
----
+[Истомин Евгений]
 
 ## 📜 Лицензия
 
