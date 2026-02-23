@@ -26,8 +26,8 @@ brew install portaudio
 ```bash
 git clone https://github.com/Genajoin/micPy.git
 cd micPy
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
@@ -79,6 +79,51 @@ mic-stream                     # Алиас для micpy
    **KDE:** System Settings → Shortcuts
 
 3. Нажмите хоткей для начала записи, ещё раз — для остановки и транскрипции
+
+### Запуск демона через systemd
+
+Для автозапуска демона при входе в систему:
+
+1. Создайте файл сервиса:
+   ```bash
+   nano ~/.config/systemd/user/micpy-daemon.service
+   ```
+
+2. Содержимое файла:
+   ```ini
+   [Unit]
+   Description=MicPy Voice Input Daemon
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/path/to/micPy
+   ExecStart=/path/to/micPy/.venv/bin/micpy daemon
+   Restart=on-failure
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   Замените `/path/to/micPy` на реальный путь к проекту.
+
+3. Активируйте сервис:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable micpy-daemon
+   systemctl --user start micpy-daemon
+   ```
+
+4. Проверьте статус:
+   ```bash
+   systemctl --user status micpy-daemon
+   ```
+
+5. Логи:
+   ```bash
+   journalctl --user -u micpy-daemon -f
+   ```
 
 ---
 
