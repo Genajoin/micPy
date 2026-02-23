@@ -140,7 +140,9 @@ class StatusBar:
         items = []
 
         if self.error_message and time.time() - self.error_time < 3:
-            items.append(('class:status-error', 'Error'))
+            # Показываем ошибку (обрезаем если длинная)
+            error_text = self.error_message[:30] + '...' if len(self.error_message) > 30 else self.error_message
+            items.append(('class:status-error', error_text))
         elif self.state == self.STATE_RECORDING:
             duration = self.editor.audio_buffer.get_recording_duration()
             items.append(('class:status-recording', f'Recording {duration:.1f}s'))
@@ -480,6 +482,7 @@ class MinimalSTTEditor:
                 self.status_bar.set_state(StatusBar.STATE_IDLE, "Empty result")
         else:
             error = result.get("error", "Unknown error")
+            print(f"Transcription error: {error}")  # Для отладки
             self.status_bar.set_state(StatusBar.STATE_IDLE, error)
 
         # Очищаем буфер
