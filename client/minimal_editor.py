@@ -17,7 +17,6 @@ import asyncio
 import os
 import sys
 import time
-import threading
 
 # Основные зависимости
 try:
@@ -435,6 +434,7 @@ class MinimalSTTEditor:
             try:
                 await self._recording_task
             except asyncio.CancelledError:
+                # Ожидаемое поведение при отмене задачи
                 pass
 
         # Получаем WAV байты

@@ -11,7 +11,7 @@ import wave
 import contextlib
 import subprocess
 import platform
-from typing import Optional, Tuple
+from typing import Optional
 
 try:
     import pyaudio
@@ -20,7 +20,7 @@ except ImportError as e:
         f"PyAudio not installed: {e}\n"
         "Install with: pip install pyaudio\n"
         "On macOS: brew install portaudio && pip install pyaudio"
-    )
+    ) from None
 
 
 class AudioBuffer:
@@ -63,6 +63,7 @@ class AudioBuffer:
                     os.dup2(old_stderr, 2)
                     os.close(old_stderr)
         except Exception:
+            # Если не удалось перенаправить stderr, просто продолжаем
             yield
 
     def _init_audio(self) -> bool:
@@ -119,6 +120,7 @@ class AudioBuffer:
                         self._pyaudio_instance.terminate()
                         self._pyaudio_instance = None
         except Exception:
+            # Ошибки очистки не критичны, игнорируем
             pass
 
     def start_recording(self) -> bool:
@@ -284,10 +286,12 @@ def play_sound(sound_type: str = 'start'):
             if result.returncode == 0:
                 return
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        # Системные звуки недоступны, используем fallback
         pass
 
     # Fallback: терминальный bell
     try:
         print('\a', end='', flush=True)
     except Exception:
+        # Даже терминальный bell может не сработать, это не критично
         pass

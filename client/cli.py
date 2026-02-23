@@ -162,7 +162,7 @@ def main_client(args):
     if args.model:
         os.environ['PARAKEET_MODEL'] = args.model
 
-    print(f"🎤 Запуск STT клиента")
+    print("🎤 Запуск STT клиента")
     print(f"   API: {args.api_url}")
     print(f"   Модель: {args.model}")
 

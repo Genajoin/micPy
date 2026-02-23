@@ -3,7 +3,9 @@ Clients package for MicPy
 
 Содержит клиенты для STT системы:
 - minimal_editor: Минималистичный терминальный редактор
-- file_transcribe_client: HTTP клиент для транскрипции файлов
+- voice_daemon: Фоновый демон голосового ввода
+- parakeet_client: HTTP клиент к Parakeet API
+- audio_buffer: Модуль захвата аудио
 """
 
 __all__ = []

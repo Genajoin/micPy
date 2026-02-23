@@ -71,7 +71,7 @@ class VoiceInputDaemon:
         self._socket: Optional[socket.socket] = None
         self._recording_thread: Optional[threading.Thread] = None
 
-        logger.info(f"VoiceInputDaemon initialized")
+        logger.info("VoiceInputDaemon initialized")
         logger.info(f"  API: {api_url}")
         logger.info(f"  Model: {model}")
         logger.info(f"  Socket: {self.socket_path}")
@@ -204,7 +204,7 @@ class VoiceInputDaemon:
         logger.info(f"Socket: {self.socket_path}")
         logger.info("")
         logger.info("To trigger, run:")
-        logger.info(f"  mic-stream trigger")
+        logger.info("  mic-stream trigger")
         logger.info("")
         logger.info("Or bind this command to a keyboard shortcut in your DE:")
         logger.info("  GNOME: Settings → Keyboard → Custom Shortcuts")
