@@ -40,7 +40,6 @@ dev = [
 
 [project.scripts]
 micpy = "client.cli:main"
-mic-stream = "client.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Genajoin/micPy"
