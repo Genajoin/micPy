@@ -441,6 +441,7 @@ class MinimalSTTEditor:
 
         # Получаем WAV байты
         wav_bytes = self.audio_buffer.stop_recording()
+        duration = self.audio_buffer.get_duration()
 
         if not wav_bytes:
             self.status_bar.set_state(StatusBar.STATE_IDLE, "No audio")
@@ -448,7 +449,6 @@ class MinimalSTTEditor:
             return
 
         # Проверяем длительность
-        duration = self.audio_buffer.get_duration()
         if duration < 0.3:
             self.status_bar.set_state(StatusBar.STATE_IDLE, "Too short")
             self.app.invalidate()
@@ -482,7 +482,6 @@ class MinimalSTTEditor:
                 self.status_bar.set_state(StatusBar.STATE_IDLE, "Empty result")
         else:
             error = result.get("error", "Unknown error")
-            print(f"Transcription error: {error}")  # Для отладки
             self.status_bar.set_state(StatusBar.STATE_IDLE, error)
 
         # Очищаем буфер
