@@ -111,7 +111,8 @@ class VoiceInputDaemon:
         self._recording_thread = threading.Thread(target=self._recording_loop, daemon=True)
         self._recording_thread.start()
 
-        play_sound('start')
+        # Звук в фоне, не блокирует запись
+        threading.Thread(target=play_sound, args=('start',), daemon=True).start()
         logger.info("Recording started - speak now")
 
     def _stop_and_transcribe(self):
@@ -133,15 +134,16 @@ class VoiceInputDaemon:
         # Проверить длительность
         if duration < 0.5:
             logger.warning("Recording too short, skipping transcription")
-            play_sound('end')
+            threading.Thread(target=play_sound, args=('end',), daemon=True).start()
             self.audio_buffer.clear()
             return
 
-        # Транскрибировать
-        play_sound('end')
+        # Сначала отправляем в API, потом звук в фоне
         logger.info("Sending to API...")
-
         result = self.api_client.transcribe_with_retry(wav_bytes, max_retries=2)
+
+        # Звук после отправки запроса (не блокирует)
+        threading.Thread(target=play_sound, args=('end',), daemon=True).start()
 
         if result["success"]:
             text = result["text"]
