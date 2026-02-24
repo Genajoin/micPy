@@ -1,8 +1,8 @@
 # micPy
 
-**Speech-to-Text клиент для Parakeet API**
+**Speech-to-Text клиент для OpenAI-совместимого API**
 
-micPy — это терминальный клиент для распознавания речи через Parakeet API. Поддерживает интерактивный TUI редактор и фоновый демон для голосового ввода по триггеру.
+micPy — это терминальный клиент для распознавания речи использующий OpenAI-совместимый API. Поддерживает интерактивный TUI редактор и фоновый демон для голосового ввода по триггеру - hook на комбинацию клавиш.
 
 ---
 
@@ -75,8 +75,8 @@ mic-stream                     # Алиас для micpy
    micpy trigger
    ```
 
-   **GNOME:** Settings → Keyboard → Custom Shortcuts
-   **KDE:** System Settings → Shortcuts
+ - **GNOME:** Settings → Keyboard → Custom Shortcuts
+ - **KDE:** System Settings → Shortcuts
 
 3. Нажмите хоткей для начала записи, ещё раз — для остановки и транскрипции
 
@@ -173,11 +173,19 @@ micPy/
 
 ## 🔗 Требования к API
 
-Требуется Parakeet API с OpenAI-совместимым эндпоинтом:
+Требуется OpenAI-совместимый STT эндпоинт:
 
 - `POST /v1/audio/transcriptions` — транскрипция аудио
 - `GET /health` — проверка доступности (опционально)
 
+Рекомендуемый на начало 2026 - Parakeet-tdt-0.6b-v3 с инференсом на CPU.
+Рекомендуемый способ установки с использованием Docker Compose:
+
+```bash
+git clone https://github.com/groxaxo/parakeet-tdt-0.6b-v3-fastapi-openai
+cd parakeet-tdt-0.6b-v3-fastapi-openai
+docker compose up parakeet-cpu -d
+```
 ---
 
 ## 👤 Автор
