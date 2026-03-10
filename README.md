@@ -13,8 +13,10 @@ micPy — это терминальный клиент для распознав
 **Linux (Ubuntu/Debian):**
 ```bash
 sudo apt update
-sudo apt install portaudio19-dev python3-pyaudio xclip
+sudo apt install portaudio19-dev python3-pyaudio xclip wl-clipboard
 ```
+
+> `xclip` для X11, `wl-clipboard` для Wayland. Можно установить оба.
 
 **macOS:**
 ```bash
@@ -101,12 +103,16 @@ mic-stream                     # Алиас для micpy
    ExecStart=/path/to/micPy/.venv/bin/micpy daemon
    Restart=on-failure
    RestartSec=5
+   # Передаём переменные для работы с буфером обмена на Wayland/X11
+   PassEnvironment=WAYLAND_DISPLAY DISPLAY
 
    [Install]
    WantedBy=default.target
    ```
 
    Замените `/path/to/micPy` на реальный путь к проекту.
+
+   > **Важно:** `PassEnvironment` обязателен для работы буфера обмена. Без него демон не сможет скопировать текст в clipboard на Wayland/X11.
 
 3. Активируйте сервис:
    ```bash
