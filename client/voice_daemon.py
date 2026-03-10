@@ -13,15 +13,20 @@
 
 import logging
 import os
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 from client.audio_buffer import AudioBuffer, play_sound
 from client.parakeet_client import ParakeetClient
+
+# Тип режима вывода
+OutputMode = Literal['auto', 'injection', 'clipboard']
 
 # Настройка логирования
 logging.basicConfig(
@@ -49,7 +54,8 @@ class VoiceInputDaemon:
         self,
         api_url: str = "http://localhost:5092/v1",
         model: str = "parakeet-tdt-0.6b-v3",
-        socket_path: Optional[Path] = None
+        socket_path: Optional[Path] = None,
+        output_mode: OutputMode = 'auto'
     ):
         """
         Инициализация демона.
@@ -58,10 +64,12 @@ class VoiceInputDaemon:
             api_url: URL Parakeet API
             model: Модель для транскрипции
             socket_path: Путь к Unix сокету
+            output_mode: Режим вывода текста (auto/injection/clipboard)
         """
         self.api_url = api_url
         self.model = model
         self.socket_path = socket_path or DEFAULT_SOCKET_PATH
+        self.output_mode = output_mode
 
         self.audio_buffer = AudioBuffer(sample_rate=16000, channels=1)
         self.api_client = ParakeetClient(api_url=api_url, model=model)
@@ -71,16 +79,77 @@ class VoiceInputDaemon:
         self._socket: Optional[socket.socket] = None
         self._recording_thread: Optional[threading.Thread] = None
 
+        # Проверяем доступность wtype при инициализации
+        self._wtype_available = shutil.which('wtype') is not None
+
         logger.info("VoiceInputDaemon initialized")
         logger.info(f"  API: {api_url}")
         logger.info(f"  Model: {model}")
         logger.info(f"  Socket: {self.socket_path}")
+        logger.info(f"  Output mode: {output_mode}")
+        if self._wtype_available:
+            logger.info("  wtype: available")
+        else:
+            logger.info("  wtype: not found (will use clipboard fallback)")
 
     def _check_dependencies(self) -> bool:
         """Проверка системных зависимостей."""
         # Для текущей реализации (только запись + буфер) системные зависимости не нужны
         # pyperclip работает через wl-clipboard/xclip автоматически
         return True
+
+    def _output_text(self, text: str) -> bool:
+        """
+        Вывести текст в активное окно или буфер обмена.
+
+        Args:
+            text: Текст для вывода
+
+        Returns:
+            True если успешно
+        """
+        # Если режим только clipboard - сразу копируем
+        if self.output_mode == 'clipboard':
+            return self._copy_to_clipboard(text)
+
+        # Пробуем wtype (Wayland injection)
+        if self.output_mode in ('auto', 'injection') and self._wtype_available:
+            try:
+                result = subprocess.run(
+                    ['wtype', '--', text],
+                    capture_output=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info("Text inserted via wtype")
+                    return True
+                stderr = result.stderr.decode().strip()
+                if stderr:
+                    logger.warning(f"wtype failed: {stderr}")
+                else:
+                    logger.warning("wtype failed with non-zero exit code")
+            except subprocess.TimeoutExpired:
+                logger.warning("wtype timeout")
+            except Exception as e:
+                logger.warning(f"wtype error: {e}")
+
+        # Fallback: clipboard
+        if self.output_mode == 'auto':
+            logger.info("Falling back to clipboard mode")
+            return self._copy_to_clipboard(text)
+
+        return False
+
+    def _copy_to_clipboard(self, text: str) -> bool:
+        """Копировать текст в буфер обмена."""
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            logger.info("Text copied to clipboard - press Ctrl+V to paste")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to copy to clipboard: {e}")
+            return False
 
     def toggle_recording(self):
         """Переключение состояния записи."""
@@ -149,13 +218,8 @@ class VoiceInputDaemon:
             text = result["text"]
             if text:
                 logger.info(f"Transcription: {text}")
-                # Скопировать в буфер
-                try:
-                    import pyperclip
-                    pyperclip.copy(text)
-                    logger.info("Text copied to clipboard - press Ctrl+V to paste")
-                except Exception as e:
-                    logger.error(f"Failed to copy to clipboard: {e}")
+                # Вывести текст через wtype или clipboard
+                self._output_text(text)
             else:
                 logger.warning("Empty transcription (no speech detected)")
         else:

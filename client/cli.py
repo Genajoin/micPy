@@ -76,6 +76,13 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         help='Путь к Unix сокету (по умолчанию: ~/.cache/voice-input.sock)'
     )
+    daemon_parser.add_argument(
+        '--output-mode',
+        choices=['auto', 'injection', 'clipboard'],
+        default='auto',
+        help='Режим вывода: auto (wtype если доступен, иначе clipboard), '
+             'injection (только wtype), clipboard (только буфер обмена)'
+    )
 
     # Команда trigger
     trigger_parser = subparsers.add_parser(
@@ -199,6 +206,7 @@ def main_daemon(args):
     print(f"   API: {args.api_url}")
     print(f"   Model: {args.model}")
     print(f"   Socket: {args.socket_path or '~/.cache/voice-input.sock'}")
+    print(f"   Output mode: {args.output_mode}")
 
     # Импортируем и запускаем демон
     try:
@@ -206,7 +214,8 @@ def main_daemon(args):
         daemon = VoiceInputDaemon(
             api_url=args.api_url,
             model=args.model,
-            socket_path=Path(args.socket_path) if args.socket_path else None
+            socket_path=Path(args.socket_path) if args.socket_path else None,
+            output_mode=args.output_mode
         )
         daemon.run()
     except ImportError as e:

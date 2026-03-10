@@ -18,6 +18,13 @@ sudo apt install portaudio19-dev python3-pyaudio xclip wl-clipboard
 
 > `xclip` для X11, `wl-clipboard` для Wayland. Можно установить оба.
 
+**Для автоматической вставки текста на Wayland:**
+```bash
+sudo apt install wtype
+```
+
+> `wtype` позволяет вставлять текст напрямую в активное окно без нажатия Ctrl+V. Без него текст копируется в буфер обмена.
+
 **macOS:**
 ```bash
 brew install portaudio
@@ -70,7 +77,28 @@ mic-stream                     # Алиас для micpy
 1. Запустите демон:
    ```bash
    micpy daemon &
+   micpy daemon --output-mode clipboard  # Только буфер обмена
    ```
+
+**Режимы вывода текста (--output-mode):**
+- `auto` — wtype если установлен, иначе clipboard (по умолчанию)
+- `injection` — только прямая вставка через wtype (требует wtype)
+- `clipboard` — только буфер обмена (Ctrl+V)
+
+**Ограничения Wayland:**
+- На Wayland текст вставляется в **текущее активное окно**
+- Оставайтесь в целевом окне во время записи и после неё
+- xdotool/pynput не работают на Wayland
+
+**GNOME/Wayland:** clipboard — единственный рабочий вариант для русского текста.
+
+| Инструмент | Sway/Hyprland | GNOME/Wayland | Unicode |
+|------------|---------------|---------------|---------|
+| wtype | ✅ | ❌ Нет virtual keyboard | ✅ |
+| pynput | ❌ | ❌ Требует X11 | ✅ |
+| ydotool | ✅ | ✅ Но нужен root | ❌ |
+
+> Автоматическая вставка на GNOME/Wayland невозможна без root — это ограничение GNOME.
 
 2. Привяжите триггер к хоткею в DE:
    ```bash
@@ -157,6 +185,7 @@ PARAKEET_MODEL=parakeet-tdt-0.6b-v3
 | `--api-url` | http://localhost:5092/v1 | URL Parakeet API |
 | `--model` | parakeet-tdt-0.6b-v3 | Модель транскрипции |
 | `--test` | - | Тестовый режим |
+| `--output-mode` | auto | Режим вывода (daemon): auto/injection/clipboard |
 
 ---
 
