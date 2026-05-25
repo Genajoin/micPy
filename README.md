@@ -1,14 +1,14 @@
 # micPy
 
-**Speech-to-Text клиент для OpenAI-совместимого API**
+**Speech-to-Text client for OpenAI-compatible APIs**
 
-micPy — это терминальный клиент для распознавания речи использующий OpenAI-совместимый API. Поддерживает интерактивный TUI редактор и фоновый демон для голосового ввода по триггеру - hook на комбинацию клавиш.
+micPy is a terminal speech-recognition client that uses an OpenAI-compatible API. It supports an interactive TUI editor and a background daemon for voice input triggered by a keyboard shortcut.
 
 ---
 
-## 🚀 Быстрый старт
+## 🚀 Quick Start
 
-### Системные зависимости
+### System dependencies
 
 **Linux (Ubuntu/Debian):**
 ```bash
@@ -16,21 +16,21 @@ sudo apt update
 sudo apt install portaudio19-dev python3-pyaudio xclip wl-clipboard
 ```
 
-> `xclip` для X11, `wl-clipboard` для Wayland. Можно установить оба.
+> `xclip` for X11, `wl-clipboard` for Wayland. You can install both.
 
-**Для автоматической вставки текста на Wayland:**
+**For automatic text injection on Wayland:**
 ```bash
 sudo apt install wtype
 ```
 
-> `wtype` позволяет вставлять текст напрямую в активное окно без нажатия Ctrl+V. Без него текст копируется в буфер обмена.
+> `wtype` lets you inject text directly into the active window without pressing Ctrl+V. Without it, text is copied to the clipboard.
 
 **macOS:**
 ```bash
 brew install portaudio
 ```
 
-### Установка
+### Installation
 
 ```bash
 git clone https://github.com/Genajoin/micPy.git
@@ -42,65 +42,65 @@ pip install -e .
 
 ---
 
-## 📱 Использование
+## 📱 Usage
 
-### Команды
+### Commands
 
 ```bash
-micpy                          # TUI редактор (интерактивный)
-micpy --api-url http://localhost:5092/v1  # Указать API URL
-micpy --test                   # Тестовый режим
+micpy                          # TUI editor (interactive)
+micpy --api-url http://localhost:5092/v1  # Specify API URL
+micpy --test                   # Test mode
 
-micpy daemon                   # Фоновый сервис голосового ввода
-micpy trigger                  # Отправить триггер на демон
+micpy daemon                   # Background voice-input service
+micpy trigger                  # Send a trigger to the daemon
 
-mic-stream                     # Алиас для micpy
+mic-stream                     # Alias for micpy
 ```
 
-### TUI Редактор
+### TUI Editor
 
-Интерактивный терминальный редактор с голосовым вводом:
+Interactive terminal editor with voice input:
 
-| Клавиша | Действие |
-|---------|----------|
-| F1 | Показать/скрыть справку |
-| F5 | Начать/остановить запись |
-| F3 | Копировать весь текст |
-| F8 | Очистить текст |
-| Ctrl+A | Выделить все |
-| Ctrl+C / Ctrl+Q | Выход |
+| Key | Action |
+|-----|--------|
+| F1 | Show/hide help |
+| F5 | Start/stop recording |
+| F3 | Copy all text |
+| F8 | Clear text |
+| Ctrl+A | Select all |
+| Ctrl+C / Ctrl+Q | Quit |
 
-### Фоновый демон
+### Background daemon
 
-Для голосового ввода по горячей клавише:
+For voice input bound to a hotkey:
 
-1. Запустите демон:
+1. Start the daemon:
    ```bash
    micpy daemon &
-   micpy daemon --output-mode clipboard  # Только буфер обмена
+   micpy daemon --output-mode clipboard  # Clipboard only
    ```
 
-**Режимы вывода текста (--output-mode):**
-- `auto` — wtype если установлен, иначе clipboard (по умолчанию)
-- `injection` — только прямая вставка через wtype (требует wtype)
-- `clipboard` — только буфер обмена (Ctrl+V)
+**Text-output modes (`--output-mode`):**
+- `auto` — wtype if installed, otherwise clipboard (default)
+- `injection` — direct injection via wtype only (requires wtype)
+- `clipboard` — clipboard only (Ctrl+V)
 
-**Ограничения Wayland:**
-- На Wayland текст вставляется в **текущее активное окно**
-- Оставайтесь в целевом окне во время записи и после неё
-- xdotool/pynput не работают на Wayland
+**Wayland limitations:**
+- On Wayland, text is injected into the **currently active window**
+- Stay in the target window during and right after recording
+- xdotool/pynput do not work on Wayland
 
-**GNOME/Wayland:** clipboard — единственный рабочий вариант для русского текста.
+**GNOME/Wayland:** clipboard is the only working option for Russian text.
 
-| Инструмент | Sway/Hyprland | GNOME/Wayland | Unicode |
-|------------|---------------|---------------|---------|
-| wtype | ✅ | ❌ Нет virtual keyboard | ✅ |
-| pynput | ❌ | ❌ Требует X11 | ✅ |
-| ydotool | ✅ | ✅ Но нужен root | ❌ |
+| Tool | Sway/Hyprland | GNOME/Wayland | Unicode |
+|------|---------------|---------------|---------|
+| wtype | ✅ | ❌ No virtual keyboard | ✅ |
+| pynput | ❌ | ❌ Requires X11 | ✅ |
+| ydotool | ✅ | ✅ But needs root | ❌ |
 
-> Автоматическая вставка на GNOME/Wayland невозможна без root — это ограничение GNOME.
+> Automatic injection on GNOME/Wayland isn't possible without root — this is a GNOME limitation.
 
-2. Привяжите триггер к хоткею в DE:
+2. Bind the trigger to a hotkey in your desktop environment:
    ```bash
    micpy trigger
    ```
@@ -108,18 +108,18 @@ mic-stream                     # Алиас для micpy
  - **GNOME:** Settings → Keyboard → Custom Shortcuts
  - **KDE:** System Settings → Shortcuts
 
-3. Нажмите хоткей для начала записи, ещё раз — для остановки и транскрипции
+3. Press the hotkey to start recording, press again to stop and transcribe
 
-### Запуск демона через systemd
+### Running the daemon via systemd
 
-Для автозапуска демона при входе в систему:
+For auto-start on login:
 
-1. Создайте файл сервиса:
+1. Create the service file:
    ```bash
    nano ~/.config/systemd/user/micpy-daemon.service
    ```
 
-2. Содержимое файла:
+2. File contents:
    ```ini
    [Unit]
    Description=MicPy Voice Input Daemon
@@ -131,90 +131,108 @@ mic-stream                     # Алиас для micpy
    ExecStart=/path/to/micPy/.venv/bin/micpy daemon
    Restart=on-failure
    RestartSec=5
-   # Передаём переменные для работы с буфером обмена на Wayland/X11
-   PassEnvironment=WAYLAND_DISPLAY DISPLAY
+   # Pass environment for clipboard access on Wayland/X11
+   PassEnvironment=WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS
+   # Wait for Wayland/session initialisation before start
+   ExecStartPre=/bin/sleep 2
 
    [Install]
    WantedBy=default.target
    ```
 
-   Замените `/path/to/micPy` на реальный путь к проекту.
+   Replace `/path/to/micPy` with the actual project path.
 
-   > **Важно:** `PassEnvironment` обязателен для работы буфера обмена. Без него демон не сможет скопировать текст в clipboard на Wayland/X11.
+   > **Important:** `PassEnvironment` is required for clipboard access. Without it the daemon can't copy text to the clipboard on Wayland/X11.
 
-3. Активируйте сервис:
+3. Activate the service:
    ```bash
    systemctl --user daemon-reload
    systemctl --user enable micpy-daemon
    systemctl --user start micpy-daemon
    ```
 
-4. Проверьте статус:
+4. Check status:
    ```bash
    systemctl --user status micpy-daemon
    ```
 
-5. Логи:
+5. Logs:
    ```bash
    journalctl --user -u micpy-daemon -f
    ```
 
+### Troubleshooting
+
+**Error "Pyperclip could not find a copy/paste mechanism":**
+
+This error occurs when systemd starts the service before the Wayland session has fully initialised.
+
+Fix:
+1. Make sure `wl-clipboard` is installed: `sudo apt install wl-clipboard`
+2. Make sure the systemd unit has `ExecStartPre=/bin/sleep 2` — the delay lets Wayland finish initialising
+3. Restart the service: `systemctl --user restart micpy-daemon`
+
+**Why the delay (ExecStartPre) is needed:**
+- Systemd may start user services before Wayland is initialised
+- Pyperclip caches available clipboard mechanisms on first import
+- If Wayland isn't ready yet, pyperclip can't find `wl-copy`/`wl-paste`
+
 ---
 
-## ⚙️ Конфигурация
+## ⚙️ Configuration
 
-### Переменные окружения
+### Environment variables
 
-Создайте `.env` файл:
+Create an `.env` file:
 
 ```bash
 PARAKEET_API_URL=http://localhost:5092/v1
 PARAKEET_MODEL=parakeet-tdt-0.6b-v3
 ```
 
-Поиск `.env`:
+`.env` lookup order:
 - `./.env`
 - `~/.env`
 - `~/micpy.env`
 - `~/.config/micpy/.env`
 
-### Аргументы
+### Arguments
 
-| Аргумент | По умолчанию | Описание |
-|----------|--------------|----------|
-| `--api-url` | http://localhost:5092/v1 | URL Parakeet API |
-| `--model` | parakeet-tdt-0.6b-v3 | Модель транскрипции |
-| `--test` | - | Тестовый режим |
-| `--output-mode` | auto | Режим вывода (daemon): auto/injection/clipboard |
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--api-url` | http://localhost:5092/v1 | Parakeet API URL |
+| `--model` | parakeet-tdt-0.6b-v3 | Transcription model |
+| `--test` | - | Test mode |
+| `--output-mode` | auto | Daemon output mode: auto/injection/clipboard |
 
 ---
 
-## 🏗️ Архитектура
+## 🏗️ Architecture
 
 ```
 micPy/
 ├── client/
-│   ├── cli.py                # CLI точка входа
-│   ├── minimal_editor.py     # TUI редактор
-│   ├── voice_daemon.py       # Фоновый демон
-│   ├── audio_buffer.py       # Захват аудио
-│   ├── parakeet_client.py    # HTTP клиент к API
-│   └── single_instance.py    # Блокировка повторных запусков
+│   ├── cli.py                # CLI entry point
+│   ├── minimal_editor.py     # TUI editor
+│   ├── voice_daemon.py       # Background daemon
+│   ├── audio_buffer.py       # Audio capture
+│   ├── parakeet_client.py    # HTTP client to the API
+│   └── single_instance.py    # Single-instance lock
 ├── pyproject.toml
 └── README.md
 ```
 
 ---
 
-## 🔗 Требования к API
+## 🔗 API requirements
 
-Требуется OpenAI-совместимый STT эндпоинт:
+An OpenAI-compatible STT endpoint is required:
 
-- `POST /v1/audio/transcriptions` — транскрипция аудио
-- `GET /health` — проверка доступности (опционально)
+- `POST /v1/audio/transcriptions` — audio transcription
+- `GET /health` — availability check (optional)
 
-Рекомендуемый на начало 2026 - Parakeet-tdt-0.6b-v3 с инференсом на CPU.
-Рекомендуемый способ установки с использованием Docker Compose:
+Recommended as of early 2026: Parakeet-tdt-0.6b-v3 with CPU inference.
+Recommended install via Docker Compose:
 
 ```bash
 git clone https://github.com/groxaxo/parakeet-tdt-0.6b-v3-fastapi-openai
@@ -223,10 +241,10 @@ docker compose up parakeet-cpu -d
 ```
 ---
 
-## 👤 Автор
+## 👤 Author
 
-[Истомин Евгений]
+Evgeny Istomin
 
-## 📜 Лицензия
+## 📜 License
 
 MIT License © 2025
