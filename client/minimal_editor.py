@@ -87,7 +87,7 @@ class ClipboardManager:
 
 
 class StatusBar:
-    """Однострочная статус-панель с подсказками клавиш."""
+    """Однострочная статус-панель: подсказки клавиш слева, статус справа."""
 
     STATE_IDLE = 'idle'
     STATE_RECORDING = 'recording'
@@ -100,6 +100,7 @@ class StatusBar:
         self.state = self.STATE_IDLE
         self.error_message = ""
         self.error_time = 0
+        self._key_flash = {}  # key_name -> timestamp
 
     def set_state(self, state: str, error: str = ""):
         self.state = state
@@ -110,35 +111,53 @@ class StatusBar:
     def show_copy_indicator(self):
         self.last_copy_time = time.time()
 
+    def flash_key(self, key_name: str):
+        """Подсветить клавишу в статус-баре на ~1с."""
+        self._key_flash[key_name] = time.time()
+
+    def _is_flashed(self, key_name: str) -> bool:
+        return time.time() - self._key_flash.get(key_name, 0) < 1.0
+
     def get_line(self) -> FormattedText:
         items = []
+
+        # --- Подсказки клавиш (фиксированная ширина, слева) ---
+        hints = [
+            ('SPACE', 'record', 'status-hint-flash-rec'),
+            ('F3', 'copy', 'status-hint-flash-ok'),
+            ('F8', 'clear', 'status-hint-flash-err'),
+            ('Ctrl+A', 'all+copy', 'status-hint-flash-ok'),
+            ('Ctrl+Q', 'quit', 'status-hint-flash-err'),
+        ]
+
+        for i, (key, action, flash_class) in enumerate(hints):
+            if i > 0:
+                items.append(('class:status-sep', ' │ '))
+
+            label = f'{key}={action}'
+            if self._is_flashed(key):
+                items.append((f'class:{flash_class}', label))
+            else:
+                items.append(('class:status-hint', label))
+
+        # --- Статус (справа, может меняться) ---
+        items.append(('class:status-sep', ' │ '))
 
         if self.error_message and time.time() - self.error_time < 3:
             err = self.error_message[:25]
             items.append(('class:status-error', f' {err}'))
         elif self.state == self.STATE_RECORDING:
             dur = self.editor.audio_buffer.get_recording_duration()
-            items.append(('class:status-recording', f' ● Rec {dur:.1f}s'))
+            items.append(('class:status-recording', f'● Rec {dur:.1f}s'))
         elif self.state == self.STATE_SENDING:
-            items.append(('class:status-sending', ' ● Sending...'))
+            items.append(('class:status-sending', '● Sending...'))
         elif self.editor.api_available:
-            items.append(('class:status-ready', ' ● Ready'))
+            items.append(('class:status-ready', '● Ready'))
         else:
-            items.append(('class:status-disconnected', ' ● Offline'))
+            items.append(('class:status-disconnected', '● Offline'))
 
         if time.time() - self.last_copy_time < 1.5:
             items.append(('class:status-success', ' ✓'))
-
-        items.append(('', '  '))
-        items.append(('class:status-hint', 'SPACE=record'))
-        items.append(('class:status-sep', ' │ '))
-        items.append(('class:status-hint', 'F3=copy'))
-        items.append(('class:status-sep', ' │ '))
-        items.append(('class:status-hint', 'F8=clear'))
-        items.append(('class:status-sep', ' │ '))
-        items.append(('class:status-hint', 'Ctrl+A=all+copy'))
-        items.append(('class:status-sep', ' │ '))
-        items.append(('class:status-hint', 'Ctrl+Q=quit'))
 
         return FormattedText(items)
 
@@ -232,6 +251,9 @@ class MinimalSTTEditor:
             'status-disconnected': '#ff6666 bg:#1a1a2e',
             # Подсказки клавиш
             'status-hint': '#8888aa bg:#1a1a2e',
+            'status-hint-flash-ok': '#00ff00 bold bg:#1a3a1a',
+            'status-hint-flash-err': '#ff4444 bold bg:#3a1a1a',
+            'status-hint-flash-rec': '#ffaa00 bold bg:#3a2a00',
             'status-sep': '#444466 bg:#1a1a2e',
             # Справка
             'help-box': 'bg:#ffffff #000000',
@@ -313,12 +335,15 @@ class MinimalSTTEditor:
             if text.strip():
                 if self.clipboard_manager.copy_text(text):
                     self.status_bar.show_copy_indicator()
+                    self.status_bar.flash_key('F3')
                     event.app.invalidate()
 
         # F8 — Очистить весь текст
         @kb.add('f8')
         def clear_all_text(event):
             self.buffer.text = ''
+            self.status_bar.flash_key('F8')
+            event.app.invalidate()
 
         # Ctrl+C — Выход
         @kb.add('c-c')
@@ -335,11 +360,14 @@ class MinimalSTTEditor:
             if text.strip():
                 self.clipboard_manager.copy_text(text)
                 self.status_bar.show_copy_indicator()
+                self.status_bar.flash_key('Ctrl+A')
             event.app.invalidate()
 
         # Ctrl+Q — Выход
         @kb.add('c-q')
         def exit_editor(event):
+            self.status_bar.flash_key('Ctrl+Q')
+            event.app.invalidate()
             event.app.exit()
 
         return kb

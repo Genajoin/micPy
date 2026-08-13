@@ -236,12 +236,8 @@ class VoiceInputDaemon:
         # Проверить длительность
         if duration < 0.5:
             logger.warning("Recording too short, skipping transcription")
-            play_sound('end')
             self.audio_buffer.clear()
             return
-
-        # Звук окончания — сразу при стопе, до API-вызова
-        play_sound('end')
 
         # Отправляем в API
         logger.info("Sending to API...")
@@ -253,6 +249,8 @@ class VoiceInputDaemon:
                 logger.info(f"Transcription: {text}")
                 # Вывести текст через wtype или clipboard
                 self._output_text(text)
+                # Звук ПОСЛЕ копирования в буфер
+                play_sound('end')
             else:
                 logger.warning("Empty transcription (no speech detected)")
         else:
