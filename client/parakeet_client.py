@@ -77,7 +77,6 @@ class ParakeetClient:
     def transcribe(
         self,
         audio_bytes: bytes,
-        language: Optional[str] = None,
         filename: str = "audio.wav"
     ) -> Dict[str, Any]:
         """
@@ -85,14 +84,12 @@ class ParakeetClient:
 
         Args:
             audio_bytes: Байты аудио файла (WAV формат)
-            language: Язык аудио (опционально, 'ru', 'en', 'auto')
             filename: Имя файла для отправки
 
         Returns:
             Словарь с результатом:
             {
                 "text": str,           # Распознанный текст
-                "language": str,       # Определенный язык
                 "duration": float,     # Длительность (если есть)
                 "success": bool,       # Успешность
                 "error": str           # Ошибка (если есть)
@@ -100,7 +97,6 @@ class ParakeetClient:
         """
         result = {
             "text": "",
-            "language": language or "unknown",
             "duration": 0.0,
             "success": False,
             "error": None
@@ -115,8 +111,6 @@ class ParakeetClient:
             data = {
                 'model': self.model
             }
-            if language:
-                data['language'] = language
 
             response = requests.post(
                 url,
@@ -135,7 +129,6 @@ class ParakeetClient:
 
             # Нормализуем результат
             result["text"] = api_result.get("text", "")
-            result["language"] = api_result.get("language", language or "unknown")
             result["duration"] = api_result.get("duration", 0.0)
             result["success"] = True
 
@@ -156,7 +149,6 @@ class ParakeetClient:
     def transcribe_with_retry(
         self,
         audio_bytes: bytes,
-        language: Optional[str] = None,
         filename: str = "audio.wav",
         max_retries: int = 2
     ) -> Dict[str, Any]:
@@ -165,7 +157,6 @@ class ParakeetClient:
 
         Args:
             audio_bytes: Байты аудио файла
-            language: Язык аудио
             filename: Имя файла
             max_retries: Максимальное количество повторных попыток
 
@@ -175,7 +166,7 @@ class ParakeetClient:
         last_result = None
 
         for attempt in range(max_retries + 1):
-            result = self.transcribe(audio_bytes, language, filename)
+            result = self.transcribe(audio_bytes, filename)
 
             if result["success"]:
                 return result
@@ -189,7 +180,6 @@ class ParakeetClient:
 
         return last_result or {
             "text": "",
-            "language": language or "unknown",
             "duration": 0.0,
             "success": False,
             "error": "All retries failed"

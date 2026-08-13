@@ -7,6 +7,10 @@
 
 import io
 import os
+import math
+import struct
+import shutil
+import tempfile
 import wave
 import contextlib
 import subprocess
@@ -259,39 +263,137 @@ class AudioBuffer:
         return self._create_wav_bytes(self.frames)
 
 
+_SOUND_CACHE: dict = {}
+
+
+def _get_beep_wav(sound_type: str) -> str:
+    """Возвращает путь к WAV-файлу с beep-звуком (генерирует при первом вызове)."""
+    if sound_type in _SOUND_CACHE:
+        return _SOUND_CACHE[sound_type]
+
+    params = {
+        'start': {'freq': 600, 'duration': 0.08},
+        'end': {'freq': 1200, 'duration': 0.12},
+    }
+    p = params.get(sound_type, params['end'])
+
+    path = os.path.join(tempfile.gettempdir(), f'micpy_{sound_type}.wav')
+    if not os.path.exists(path):
+        sr = 16000
+        n = int(sr * p['duration'])
+        with wave.open(path, 'w') as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(sr)
+            fade_n = min(200, n // 4)
+            frames = bytearray()
+            for i in range(n):
+                fade = min(1.0, i / fade_n, (n - i) / fade_n)
+                v = int(32767 * 0.3 * fade * math.sin(2 * math.pi * p['freq'] * i / sr))
+                frames += struct.pack('<h', v)
+            f.writeframes(frames)
+
+    _SOUND_CACHE[sound_type] = path
+    return path
+
+
+def _play_wav_pyaudio(wav_path: str) -> bool:
+    """Проиграть WAV через PyAudio output stream (fallback для систем без pw-play)."""
+    try:
+        if platform.system() != 'Darwin':
+            cm = _suppress_alsa_warnings_ctx()
+        else:
+            cm = contextlib.nullcontext()
+
+        with cm:
+            wf = wave.open(wav_path, 'rb')
+            pa = pyaudio.PyAudio()
+            try:
+                stream = pa.open(
+                    format=pa.get_format_from_width(wf.getsampwidth()),
+                    channels=wf.getnchannels(),
+                    rate=wf.getframerate(),
+                    output=True
+                )
+                stream.start_stream()
+                data = wf.readframes(wf.getnframes())
+                stream.write(data)
+
+                import time as _time
+                audio_ms = len(data) / (wf.getframerate() * wf.getsampwidth() * wf.getnchannels()) * 1000
+                _time.sleep(audio_ms / 1000 + 0.05)
+
+                stream.stop_stream()
+                stream.close()
+            finally:
+                pa.terminate()
+                wf.close()
+
+        return True
+    except Exception:
+        return False
+
+
+@contextlib.contextmanager
+def _suppress_alsa_warnings_ctx():
+    """Подавление ALSA warnings."""
+    try:
+        with open(os.devnull, 'w') as devnull:
+            old_stderr = os.dup(2)
+            os.dup2(devnull.fileno(), 2)
+            try:
+                yield
+            finally:
+                os.dup2(old_stderr, 2)
+                os.close(old_stderr)
+    except Exception:
+        yield
+
+
 def play_sound(sound_type: str = 'start'):
     """
-    Кроссплатформенное воспроизведение системных звуков.
+    Воспроизведение звука-уведомления.
+
+    Использует оторванный subprocess с чистым окружением и задержкой —
+    чтобы дать PipeWire время освободить ресурсы записи.
 
     Args:
         sound_type: 'start' для начала записи, 'end' для окончания
     """
-    try:
-        if platform.system() == 'Darwin':  # macOS
-            sound_file = '/System/Library/Sounds/Ping.aiff'
-            subprocess.run(
-                ['afplay', sound_file],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=2
-            )
-        else:  # Linux
-            sound_name = 'bell' if sound_type == 'start' else 'message'
-            result = subprocess.run(
-                ['canberra-gtk-play', '-i', sound_name],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=2
-            )
-            if result.returncode == 0:
-                return
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-        # Системные звуки недоступны, используем fallback
-        pass
+    import logging
+    logger = logging.getLogger('PlaySound')
 
-    # Fallback: терминальный bell
+    wav_path = _get_beep_wav(sound_type)
+
+    uid = os.getuid()
+    clean_env = {
+        'XDG_RUNTIME_DIR': f'/run/user/{uid}',
+        'PATH': '/usr/bin:/bin:/usr/local/bin',
+        'HOME': os.path.expanduser('~'),
+        'LANG': 'en_US.UTF-8',
+    }
+
+    pw_play = shutil.which('pw-play')
+    if pw_play:
+        delay = '0.15' if sound_type == 'end' else '0'
+        try:
+            proc = subprocess.Popen(
+                ['bash', '-c', f'sleep {delay} && exec {pw_play} "{wav_path}"'],
+                env=clean_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+            logger.info(f"pw-play pid={proc.pid}, sound={sound_type}")
+            return
+        except Exception as e:
+            logger.warning(f"pw-play failed: {e}")
+
+    if _play_wav_pyaudio(wav_path):
+        logger.info(f"played via pyaudio fallback, sound={sound_type}")
+        return
+
     try:
         print('\a', end='', flush=True)
     except Exception:
-        # Даже терминальный bell может не сработать, это не критично
         pass

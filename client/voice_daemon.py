@@ -79,8 +79,10 @@ class VoiceInputDaemon:
         self._socket: Optional[socket.socket] = None
         self._recording_thread: Optional[threading.Thread] = None
 
-        # Проверяем доступность wtype при инициализации
+        # Проверяем доступность инструментов при инициализации
         self._wtype_available = shutil.which('wtype') is not None
+        self._wl_copy_available = shutil.which('wl-copy') is not None
+        self._ensure_wayland_env()
 
         logger.info("VoiceInputDaemon initialized")
         logger.info(f"  API: {api_url}")
@@ -91,6 +93,17 @@ class VoiceInputDaemon:
             logger.info("  wtype: available")
         else:
             logger.info("  wtype: not found (will use clipboard fallback)")
+
+    def _ensure_wayland_env(self):
+        """Убедиться, что WAYLAND_DISPLAY установлена для работы wl-copy."""
+        if os.environ.get('WAYLAND_DISPLAY'):
+            return
+        uid = os.getuid()
+        for name in ('wayland-0', 'wayland-1'):
+            if Path(f'/run/user/{uid}/{name}').exists():
+                os.environ['WAYLAND_DISPLAY'] = name
+                logger.info(f"Auto-detected WAYLAND_DISPLAY={name}")
+                return
 
     def _check_dependencies(self) -> bool:
         """Проверка системных зависимостей."""
@@ -142,14 +155,33 @@ class VoiceInputDaemon:
 
     def _copy_to_clipboard(self, text: str) -> bool:
         """Копировать текст в буфер обмена."""
+        # Сначала пробуем pyperclip
         try:
             import pyperclip
             pyperclip.copy(text)
             logger.info("Text copied to clipboard - press Ctrl+V to paste")
             return True
         except Exception as e:
-            logger.error(f"Failed to copy to clipboard: {e}")
-            return False
+            logger.warning(f"pyperclip failed: {e}")
+
+        # Fallback: wl-copy напрямую
+        if self._wl_copy_available:
+            try:
+                self._ensure_wayland_env()
+                result = subprocess.run(
+                    ['wl-copy', text],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info("Text copied to clipboard via wl-copy - press Ctrl+V to paste")
+                    return True
+                logger.error(f"wl-copy failed: {result.stderr.decode().strip()}")
+            except Exception as e:
+                logger.error(f"wl-copy error: {e}")
+
+        logger.error("No clipboard mechanism available")
+        return False
 
     def toggle_recording(self):
         """Переключение состояния записи."""
@@ -163,11 +195,14 @@ class VoiceInputDaemon:
         """Цикл записи аудио (выполняется в отдельном потоке)."""
         while self.is_recording:
             self.audio_buffer.read_chunk()
-            time.sleep(0.05)  # 50ms интервал для снижения нагрузки на CPU
+            time.sleep(0.01)  # 10ms — предотвращает 100% CPU, PyAudio сам блокирует до данных
 
     def _start_recording(self):
         """Начало записи."""
         logger.info("Starting recording...")
+
+        # Звук ДО инициализации PyAudio — избегаем гонки PipeWire-соединений
+        play_sound('start')
 
         # Начать запись аудио
         if not self.audio_buffer.start_recording():
@@ -180,8 +215,6 @@ class VoiceInputDaemon:
         self._recording_thread = threading.Thread(target=self._recording_loop, daemon=True)
         self._recording_thread.start()
 
-        # Звук в фоне, не блокирует запись
-        threading.Thread(target=play_sound, args=('start',), daemon=True).start()
         logger.info("Recording started - speak now")
 
     def _stop_and_transcribe(self):
@@ -203,16 +236,16 @@ class VoiceInputDaemon:
         # Проверить длительность
         if duration < 0.5:
             logger.warning("Recording too short, skipping transcription")
-            threading.Thread(target=play_sound, args=('end',), daemon=True).start()
+            play_sound('end')
             self.audio_buffer.clear()
             return
 
-        # Сначала отправляем в API, потом звук в фоне
+        # Звук окончания — сразу при стопе, до API-вызова
+        play_sound('end')
+
+        # Отправляем в API
         logger.info("Sending to API...")
         result = self.api_client.transcribe_with_retry(wav_bytes, max_retries=2)
-
-        # Звук после отправки запроса (не блокирует)
-        threading.Thread(target=play_sound, args=('end',), daemon=True).start()
 
         if result["success"]:
             text = result["text"]
