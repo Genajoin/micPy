@@ -87,13 +87,12 @@ class ClipboardManager:
 
 
 class StatusBar:
-    """Минимальная статус строка"""
+    """Однострочная статус-панель с подсказками клавиш."""
 
-    # Состояния записи
-    STATE_IDLE = 'idle'          # Не записывает
-    STATE_RECORDING = 'recording'  # Запись
-    STATE_SENDING = 'sending'    # Отправка на API
-    STATE_READY = 'ready'        # Готов (текст получен)
+    STATE_IDLE = 'idle'
+    STATE_RECORDING = 'recording'
+    STATE_SENDING = 'sending'
+    STATE_READY = 'ready'
 
     def __init__(self, editor):
         self.editor = editor
@@ -103,65 +102,45 @@ class StatusBar:
         self.error_time = 0
 
     def set_state(self, state: str, error: str = ""):
-        """Установка состояния"""
         self.state = state
         if error:
             self.error_message = error
             self.error_time = time.time()
 
-    def get_left_status(self) -> FormattedText:
-        """Левая часть статус бара: индикатор + F1:Help"""
-        items = []
+    def show_copy_indicator(self):
+        self.last_copy_time = time.time()
 
-        # Индикатор состояния
-        if self.state == self.STATE_RECORDING:
-            items.append(('class:status-recording', '[●] '))
-        elif self.state == self.STATE_SENDING:
-            items.append(('class:status-sending', '[●] '))
-        elif self.state == self.STATE_READY:
-            items.append(('class:status-ready', '[●] '))
-        elif self.error_message and time.time() - self.error_time < 3:
-            items.append(('class:status-error', '[●] '))
-        else:
-            items.append(('class:status-idle', '[●] '))
-
-        # F1:Help + индикатор копирования
-        items.append(('', 'F1:Help'))
-
-        # Индикатор копирования
-        current_time = time.time()
-        if current_time - self.last_copy_time < 1.5:
-            items.append(('class:status-success', ' ✓'))
-
-        return FormattedText(items)
-
-    def get_right_status(self) -> FormattedText:
-        """Правая часть статус бара: состояние"""
+    def get_line(self) -> FormattedText:
         items = []
 
         if self.error_message and time.time() - self.error_time < 3:
-            # Показываем ошибку (обрезаем если длинная)
-            error_text = self.error_message[:30] + '...' if len(self.error_message) > 30 else self.error_message
-            items.append(('class:status-error', error_text))
+            err = self.error_message[:25]
+            items.append(('class:status-error', f' {err}'))
         elif self.state == self.STATE_RECORDING:
-            duration = self.editor.audio_buffer.get_recording_duration()
-            items.append(('class:status-recording', f'Recording {duration:.1f}s'))
+            dur = self.editor.audio_buffer.get_recording_duration()
+            items.append(('class:status-recording', f' ● Rec {dur:.1f}s'))
         elif self.state == self.STATE_SENDING:
-            items.append(('class:status-sending', 'Sending...'))
-        elif self.state == self.STATE_READY:
-            items.append(('class:status-ready', 'Ready'))
+            items.append(('class:status-sending', ' ● Sending...'))
+        elif self.editor.api_available:
+            items.append(('class:status-ready', ' ● Ready'))
         else:
-            # Проверяем доступность API
-            if self.editor.api_available:
-                items.append(('class:status-connected', 'Ready'))
-            else:
-                items.append(('class:status-disconnected', 'API Offline'))
+            items.append(('class:status-disconnected', ' ● Offline'))
+
+        if time.time() - self.last_copy_time < 1.5:
+            items.append(('class:status-success', ' ✓'))
+
+        items.append(('', '  '))
+        items.append(('class:status-hint', 'SPACE=record'))
+        items.append(('class:status-sep', ' │ '))
+        items.append(('class:status-hint', 'F3=copy'))
+        items.append(('class:status-sep', ' │ '))
+        items.append(('class:status-hint', 'F8=clear'))
+        items.append(('class:status-sep', ' │ '))
+        items.append(('class:status-hint', 'Ctrl+A=all+copy'))
+        items.append(('class:status-sep', ' │ '))
+        items.append(('class:status-hint', 'Ctrl+Q=quit'))
 
         return FormattedText(items)
-
-    def show_copy_indicator(self):
-        """Показать индикатор копирования"""
-        self.last_copy_time = time.time()
 
 
 class MinimalSTTEditor:
@@ -192,6 +171,12 @@ class MinimalSTTEditor:
         # Состояние справки
         self.show_help = False
 
+        # Space hold-to-record state
+        self._space_down = False
+        self._space_last_event = 0.0
+        self._space_recording = False
+        self._space_start_pos = 0
+
         # Флаг для вывода инициализации (для тестового режима)
         self._initialization_output = False
 
@@ -210,25 +195,14 @@ class MinimalSTTEditor:
             dont_extend_height=False
         )
 
-        # Статус бар с разделением на левую и правую части
-        self.status_window = VSplit([
-            # Левая часть: индикатор + F1:Help
-            Window(
-                content=FormattedTextControl(
-                    lambda: self.status_bar.get_left_status()
-                ),
-                dont_extend_width=True
+        # Статус-бар — одна строка
+        self.status_window = Window(
+            content=FormattedTextControl(
+                lambda: self.status_bar.get_line()
             ),
-            # Центр: пустое пространство (расширяется)
-            Window(char=' '),
-            # Правая часть: статус STT
-            Window(
-                content=FormattedTextControl(
-                    lambda: self.status_bar.get_right_status()
-                ),
-                dont_extend_width=True
-            ),
-        ], height=1)
+            height=1,
+            style='class:status-bar'
+        )
 
         # Layout: редактор + статус бар (пока без справки)
         self.layout = Layout(
@@ -247,20 +221,23 @@ class MinimalSTTEditor:
 
         # Стили
         self.style = Style.from_dict({
-            # Статус бар
-            'status-recording': '#ff0000 bold',        # Красный: запись
-            'status-sending': '#ffaa00 bold',          # Оранжевый: отправка
-            'status-ready': '#00ff00 bold',            # Зеленый: готов
-            'status-idle': '#666666',                  # Серый: неактивен
-            'status-error': '#ff0000 bold reverse',    # Красный с фоном: ошибка
-            'status-connected': 'bg:#008800 #ffffff',  # Зеленый фон при подключении
-            'status-disconnected': 'bg:#880000 #ffffff',  # Красный фон при отключении
-            'status-success': 'bg:#008800 #ffffff bold',  # Зеленый для success
+            # Статус-бар фон
+            'status-bar': 'bg:#1a1a2e',
+            # Индикаторы
+            'status-recording': '#ff0000 bold bg:#1a1a2e',
+            'status-sending': '#ffaa00 bold bg:#1a1a2e',
+            'status-ready': '#00ff00 bg:#1a1a2e',
+            'status-error': '#ff4444 bold bg:#1a1a2e',
+            'status-success': '#00ff00 bold bg:#1a1a2e',
+            'status-disconnected': '#ff6666 bg:#1a1a2e',
+            # Подсказки клавиш
+            'status-hint': '#8888aa bg:#1a1a2e',
+            'status-sep': '#444466 bg:#1a1a2e',
             # Справка
-            'help-box': 'bg:#ffffff #000000',          # Белый фон для справки
-            'help-title': '#0066cc bold',              # Синий заголовок
-            'help-section': '#006600 bold',            # Зеленый заголовок секции
-            'help-key': '#cc6600 bold',                # Оранжевые клавиши
+            'help-box': 'bg:#ffffff #000000',
+            'help-title': '#0066cc bold',
+            'help-section': '#006600 bold',
+            'help-key': '#cc6600 bold',
         })
 
         # Приложение
@@ -281,20 +258,20 @@ class MinimalSTTEditor:
         """Создание клавиатурных привязок"""
         kb = KeyBindings()
 
-        # F1 - Показать/скрыть справку
+        # F1 — Показать/скрыть справку
         @kb.add('f1')
         def toggle_help(event):
             self.show_help = not self.show_help
             event.app.invalidate()
 
-        # ESC - Скрыть справку
+        # ESC — Скрыть справку
         @kb.add('escape')
         def hide_help(event):
             if self.show_help:
                 self.show_help = False
                 event.app.invalidate()
 
-        # F5 - Начать/остановить запись
+        # F5 — Начать/остановить запись (альтернатива Space hold)
         @kb.add('f5')
         def toggle_recording(event):
             if self.is_recording:
@@ -302,32 +279,65 @@ class MinimalSTTEditor:
             else:
                 asyncio.create_task(self.start_recording())
 
-        # F3 - Копировать весь текст
+        # SPACE — короткий = пробел, удержание = запись
+        @kb.add('space')
+        def handle_space(event):
+            now = time.time()
+
+            if self._space_recording:
+                self._space_last_event = now
+                return
+
+            # Rapid auto-repeat (<50ms между событиями) = удержание
+            if self._space_down and (now - self._space_last_event) < 0.05:
+                text = self.buffer.text
+                self.buffer.text = text[:self._space_start_pos]
+                self.buffer.cursor_position = self._space_start_pos
+                self._space_down = False
+                self._space_recording = True
+                self._space_last_event = now
+                asyncio.create_task(self._start_space_recording())
+                return
+
+            if not self._space_down:
+                self._space_down = True
+                self._space_start_pos = self.buffer.cursor_position
+
+            self._space_last_event = now
+            self.buffer.insert_text(' ')
+
+        # F3 — Копировать весь текст
         @kb.add('f3')
         def copy_all_text(event):
             text = self.buffer.text
             if text.strip():
                 if self.clipboard_manager.copy_text(text):
                     self.status_bar.show_copy_indicator()
+                    event.app.invalidate()
 
-        # F8 - Очистить весь текст
+        # F8 — Очистить весь текст
         @kb.add('f8')
         def clear_all_text(event):
             self.buffer.text = ''
 
-        # Ctrl+C - Выход из приложения
+        # Ctrl+C — Выход
         @kb.add('c-c')
         def exit_editor_ctrl_c(event):
             event.app.exit()
 
-        # Ctrl+A - Выделить все
+        # Ctrl+A — Выделить всё + сразу копировать
         @kb.add('c-a')
-        def select_all(event):
+        def select_all_and_copy(event):
             self.buffer.cursor_position = 0
             self.buffer.start_selection()
             self.buffer.cursor_position = len(self.buffer.text)
+            text = self.buffer.text
+            if text.strip():
+                self.clipboard_manager.copy_text(text)
+                self.status_bar.show_copy_indicator()
+            event.app.invalidate()
 
-        # Ctrl+Q - Выход
+        # Ctrl+Q — Выход
         @kb.add('c-q')
         def exit_editor(event):
             event.app.exit()
@@ -340,33 +350,27 @@ class MinimalSTTEditor:
             ('class:help-title', '╔═══════════════════════════════════\n'),
             ('class:help-title', '║    STT Минимальный Редактор       ║\n'),
             ('class:help-title', '╚═══════════════════════════════════\n\n'),
-            ('class:help-section', 'Индикаторы состояния:\n'),
-            ('class:status-recording', '  ● Красный'),
-            ('', ' - запись аудио\n'),
-            ('class:status-sending', '  ● Оранжевый'),
-            ('', ' - отправка на API\n'),
-            ('class:status-ready', '  ● Зеленый'),
-            ('', ' - готов к работе\n'),
-            ('class:status-error', '  ● Красный (фон)'),
-            ('', ' - ошибка\n'),
-            ('class:status-idle', '  ● Серый'),
-            ('', ' - неактивен\n\n'),
             ('class:help-section', 'Горячие клавиши:\n'),
-            ('class:help-key', '  F1'),
-            ('', ' - показать/скрыть справку\n'),
+            ('class:help-key', '  SPACE'),
+            ('', ' (удерж.) — запись\n'),
             ('class:help-key', '  F5'),
-            ('', ' - начать/остановить запись\n'),
+            ('', ' — запись (переключатель)\n'),
             ('class:help-key', '  F3'),
-            ('', ' - копировать весь текст\n'),
+            ('', ' — копировать весь текст\n'),
             ('class:help-key', '  F8'),
-            ('', ' - очистить все\n'),
+            ('', ' — очистить всё\n'),
             ('class:help-key', '  Ctrl+A'),
-            ('', ' - выделить все\n'),
+            ('', ' — выделить всё + копировать\n'),
             ('class:help-key', '  ESC'),
-            ('', ' - закрыть справку\n\n'),
+            ('', ' — закрыть справку\n'),
+            ('class:help-key', '  Ctrl+Q'),
+            ('', ' — выход\n\n'),
+            ('class:help-section', 'Запись:\n'),
+            ('', '  Удерживайте SPACE — запись\n'),
+            ('', '  Отпустите — транскрипция\n'),
+            ('', '  Текст вставится в курсор\n\n'),
             ('class:help-section', 'Особенности:\n'),
-            ('', '  • Batch режим (Parakeet API)\n'),
-            ('', '  • Автокопирование текста\n'),
+            ('', '  • Автокопирование в буфер\n'),
             ('', '  • Поддержка мыши\n'),
             ('', '  • 16kHz моно аудио')
         ])
@@ -380,7 +384,25 @@ class MinimalSTTEditor:
 
     def on_app_invalidate(self, sender=None):
         """Обработчик обновления приложения"""
+        # Сброс state hold если давно не было Space событий
+        if self._space_down and not self._space_recording:
+            if time.time() - self._space_last_event > 0.6:
+                self._space_down = False
         self.check_selection_change()
+
+    async def _start_space_recording(self):
+        """Запуск записи по удержанию Space."""
+        await self.start_recording()
+        asyncio.create_task(self._space_release_monitor())
+
+    async def _space_release_monitor(self):
+        """Мониторинг отпускания Space (нет событий 200ms = отпущена)."""
+        while self._space_recording and self.is_recording:
+            await asyncio.sleep(0.05)
+            if time.time() - self._space_last_event > 0.2:
+                self._space_recording = False
+                await self.stop_recording_and_transcribe()
+                break
 
     def check_selection_change(self):
         """Проверка изменений в выделении и автокопирование"""
@@ -508,24 +530,16 @@ class MinimalSTTEditor:
 
         # Вывод только в тестовом режиме
         if hasattr(self, '_initialization_output') and self._initialization_output:
-            print("Минималистичный STT Редактор")
-            print("============================")
+            print("STT Редактор")
+            print("=" * 40)
             print(connection_status)
             print("\nГорячие клавиши:")
-            print("F5 - Начать/остановить запись")
-            print("F3 - Копировать весь текст")
-            print("F8 - Очистить весь текст")
-            print("Ctrl+C - Выход")
-            print("Ctrl+A - Выделить все")
-            print("Ctrl+Q - Выход (альтернативный)")
-            print("\nИндикаторы состояния:")
-            print("● Красный - запись")
-            print("● Оранжевый - отправка на API")
-            print("● Зеленый - готов")
-            print("● Серый - неактивен")
-            print("\nАвтоматическое копирование:")
-            print("- Распознанный текст")
-            print("- Выделенный мышью текст")
+            print("SPACE (удерж.) — запись голоса")
+            print("F5 — запись (переключатель)")
+            print("F3 — копировать весь текст")
+            print("F8 — очистить всё")
+            print("Ctrl+A — выделить всё + копировать")
+            print("Ctrl+Q — выход")
             print("\nРедактор готов к работе!")
 
     async def cleanup(self):
