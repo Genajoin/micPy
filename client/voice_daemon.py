@@ -14,6 +14,7 @@
 import logging
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -22,7 +23,12 @@ import time
 from pathlib import Path
 from typing import Optional, Literal
 
-from client.audio_buffer import AudioBuffer, play_sound
+from client.audio_buffer import (
+    AudioBuffer,
+    play_sound,
+    start_keepalive,
+    stop_keepalive,
+)
 from client.parakeet_client import ParakeetClient
 
 # Тип режима вывода
@@ -260,6 +266,11 @@ class VoiceInputDaemon:
         # Очистить буфер
         self.audio_buffer.clear()
 
+    def _handle_shutdown(self, signum, _frame):
+        """Штатное завершение по сигналу — даёт отработать очистке."""
+        logger.info(f"Signal {signum} received, shutting down")
+        self._running = False
+
     def run(self):
         """Запуск демона."""
         logger.info("=" * 50)
@@ -278,8 +289,20 @@ class VoiceInputDaemon:
             logger.warning(f"API health check failed: {self.api_url}")
             logger.warning("Daemon will start anyway, but transcription may fail")
 
+        # systemd останавливает сервис по SIGTERM. Без обработчика процесс
+        # умирает мгновенно и finally не отрабатывает — тогда keepalive
+        # остаётся висеть, а сокет не удаляется.
+        signal.signal(signal.SIGTERM, self._handle_shutdown)
+
+        # Не даём аудиовыходу заснуть (MICPY_SOUND_KEEPALIVE=1), иначе короткий
+        # бип теряется при пробуждении устройства — см. SOUND_DEBUGGING.md
+        start_keepalive()
+
         self._running = True
-        self._run_socket_mode()
+        try:
+            self._run_socket_mode()
+        finally:
+            stop_keepalive()
 
     def _run_socket_mode(self):
         """Запуск в режиме Unix сокета."""

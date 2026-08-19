@@ -12,6 +12,8 @@ import struct
 import shutil
 import tempfile
 import wave
+import atexit
+import signal
 import contextlib
 import subprocess
 import platform
@@ -264,12 +266,55 @@ class AudioBuffer:
 
 
 _SOUND_CACHE: dict = {}
+_KEEPALIVE_PROC = None
+
+
+def _sound_settings() -> dict:
+    """
+    Настройки звуковых уведомлений из окружения.
+
+    Нужны для обхода «спящего» аудиовыхода без правки системных конфигов:
+    PipeWire паркует нод после 5 с тишины, а устройство (обычно HDMI на
+    видеокарте) теряет первые сотни мс при пробуждении — короткий бип
+    пропадает целиком. См. SOUND_DEBUGGING.md, Эксперимент 8.
+
+    MICPY_SOUND_KEEPALIVE    1 — не давать выходу заснуть (самый надёжный обход)
+    MICPY_SOUND_WARMUP_MS    тишина в начале WAV, «прогревает» устройство
+    MICPY_SOUND_DURATION_MS  длительность бипа (0 — штатная: 80/120 мс)
+    MICPY_SOUND_VOLUME       амплитуда 0.0–1.0 (по умолчанию 0.3)
+    """
+    def _num(name, default, cast):
+        try:
+            v = cast(os.environ.get(name, '').strip())
+        except (ValueError, TypeError):
+            return default
+        return v if v >= 0 else default
+
+    truthy = ('1', 'true', 'yes', 'on')
+    return {
+        'keepalive': os.environ.get('MICPY_SOUND_KEEPALIVE', '').strip().lower() in truthy,
+        'warmup_ms': _num('MICPY_SOUND_WARMUP_MS', 0, int),
+        'duration_ms': _num('MICPY_SOUND_DURATION_MS', 0, int),
+        'volume': min(1.0, _num('MICPY_SOUND_VOLUME', 0.3, float)),
+    }
+
+
+def _clean_env() -> dict:
+    """Чистое окружение для pw-play (см. SOUND_DEBUGGING.md, Эксперимент 7)."""
+    return {
+        'XDG_RUNTIME_DIR': f'/run/user/{os.getuid()}',
+        'PATH': '/usr/bin:/bin:/usr/local/bin',
+        'HOME': os.path.expanduser('~'),
+        'LANG': 'en_US.UTF-8',
+    }
 
 
 def _get_beep_wav(sound_type: str) -> str:
     """Возвращает путь к WAV-файлу с beep-звуком (генерирует при первом вызове)."""
-    if sound_type in _SOUND_CACHE:
-        return _SOUND_CACHE[sound_type]
+    cfg = _sound_settings()
+    key = (sound_type, cfg['warmup_ms'], cfg['duration_ms'], cfg['volume'])
+    if key in _SOUND_CACHE:
+        return _SOUND_CACHE[key]
 
     params = {
         'start': {'freq': 600, 'duration': 0.08},
@@ -277,23 +322,32 @@ def _get_beep_wav(sound_type: str) -> str:
     }
     p = params.get(sound_type, params['end'])
 
-    path = os.path.join(tempfile.gettempdir(), f'micpy_{sound_type}.wav')
+    duration = cfg['duration_ms'] / 1000 if cfg['duration_ms'] else p['duration']
+    amp = cfg['volume']
+    warmup = cfg['warmup_ms'] / 1000
+
+    # Имя файла зависит от параметров — иначе в /tmp останется старый кеш
+    tag = f"_w{cfg['warmup_ms']}_d{int(duration * 1000)}_v{int(amp * 100)}"
+    if key[1:] == (0, 0, 0.3):
+        tag = ''
+    path = os.path.join(tempfile.gettempdir(), f'micpy_{sound_type}{tag}.wav')
+
     if not os.path.exists(path):
         sr = 16000
-        n = int(sr * p['duration'])
+        n = int(sr * duration)
         with wave.open(path, 'w') as f:
             f.setnchannels(1)
             f.setsampwidth(2)
             f.setframerate(sr)
-            fade_n = min(200, n // 4)
-            frames = bytearray()
+            fade_n = max(1, min(200, n // 4))
+            frames = bytearray(b'\x00\x00' * int(sr * warmup))
             for i in range(n):
                 fade = min(1.0, i / fade_n, (n - i) / fade_n)
-                v = int(32767 * 0.3 * fade * math.sin(2 * math.pi * p['freq'] * i / sr))
+                v = int(32767 * amp * fade * math.sin(2 * math.pi * p['freq'] * i / sr))
                 frames += struct.pack('<h', v)
             f.writeframes(frames)
 
-    _SOUND_CACHE[sound_type] = path
+    _SOUND_CACHE[key] = path
     return path
 
 
@@ -365,13 +419,7 @@ def play_sound(sound_type: str = 'start'):
 
     wav_path = _get_beep_wav(sound_type)
 
-    uid = os.getuid()
-    clean_env = {
-        'XDG_RUNTIME_DIR': f'/run/user/{uid}',
-        'PATH': '/usr/bin:/bin:/usr/local/bin',
-        'HOME': os.path.expanduser('~'),
-        'LANG': 'en_US.UTF-8',
-    }
+    clean_env = _clean_env()
 
     pw_play = shutil.which('pw-play')
     if pw_play:
@@ -397,3 +445,92 @@ def play_sound(sound_type: str = 'start'):
         print('\a', end='', flush=True)
     except Exception:
         pass
+
+
+def _get_silence_wav(seconds: int = 10) -> str:
+    """
+    WAV с тишиной — «носитель» для keepalive-потока.
+
+    Длительность заодно задаёт период, с которым keepalive проверяет,
+    жив ли ещё родительский процесс.
+    """
+    path = os.path.join(tempfile.gettempdir(), f'micpy_silence_{seconds}s.wav')
+    if not os.path.exists(path):
+        sr = 8000
+        with wave.open(path, 'w') as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(sr)
+            f.writeframes(b'\x00\x00' * (sr * seconds))
+    return path
+
+
+def start_keepalive() -> bool:
+    """
+    Не даёт аудиовыходу заснуть: непрерывно проигрывает тишину.
+
+    Обход проблемы, когда PipeWire паркует нод после 5 с тишины, а устройство
+    (обычно HDMI) съедает короткий бип на пробуждении. Делает то же, что
+    системная настройка session.suspend-timeout-seconds=0, но из приложения
+    и без правки конфигов WirePlumber.
+
+    Включается через MICPY_SOUND_KEEPALIVE=1. Без неё — no-op.
+
+    Returns:
+        True если keepalive запущен
+    """
+    global _KEEPALIVE_PROC
+    import logging
+    logger = logging.getLogger('PlaySound')
+
+    if not _sound_settings()['keepalive']:
+        return False
+
+    if _KEEPALIVE_PROC and _KEEPALIVE_PROC.poll() is None:
+        return True
+
+    pw_play = shutil.which('pw-play')
+    if not pw_play:
+        logger.warning("keepalive: pw-play not found, skipping")
+        return False
+
+    silence = _get_silence_wav()
+    # Сторож по PID родителя: цикл завершится сам, даже если демон убит
+    # сигналом и штатный stop_keepalive() не успел отработать (SIGTERM от
+    # systemd, SIGKILL). Иначе keepalive остаётся сиротой и держит устройство.
+    watchdog = f'while kill -0 {os.getpid()} 2>/dev/null; do'
+    try:
+        # Отдельная сессия — чтобы убить всю группу разом. Из cgroup systemd
+        # процесс при этом не выходит, поэтому сиротой не останется.
+        _KEEPALIVE_PROC = subprocess.Popen(
+            ['bash', '-c', f'{watchdog} {pw_play} "{silence}" || sleep 1; done'],
+            env=_clean_env(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+    except Exception as e:
+        logger.warning(f"keepalive failed: {e}")
+        return False
+
+    atexit.register(stop_keepalive)
+    logger.info(f"keepalive started, pid={_KEEPALIVE_PROC.pid}")
+    return True
+
+
+def stop_keepalive():
+    """Останавливает keepalive-поток (вместе с дочерним pw-play)."""
+    global _KEEPALIVE_PROC
+    proc, _KEEPALIVE_PROC = _KEEPALIVE_PROC, None
+    if not proc or proc.poll() is not None:
+        return
+
+    try:
+        # Убиваем всю группу: сам bash-цикл и запущенный им pw-play
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait(timeout=2)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass

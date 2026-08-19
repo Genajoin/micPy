@@ -177,6 +177,32 @@ Fix:
 - Pyperclip caches available clipboard mechanisms on first import
 - If Wayland isn't ready yet, pyperclip can't find `wl-copy`/`wl-paste`
 
+**Notification beeps are missing or play only sometimes:**
+
+Usually the audio output falls asleep. PipeWire parks an idle sink after
+5 seconds of silence, and some devices (notably HDMI outputs on NVIDIA cards)
+drop the first few hundred milliseconds while waking up — the beep is only
+80–120 ms, so it is swallowed whole. `pw-play` still exits with code 0, which
+makes the logs look perfectly healthy.
+
+Typical symptom: on short recordings you hear *either* the start beep *or*
+the end one, but not both.
+
+Quick check — look at the sink state after a few seconds of silence:
+
+```bash
+pw-dump | python3 -c "import json,sys; [print(o['info']['state'], o['info']['props']['node.name']) for o in json.load(sys.stdin) if (o.get('info') or {}).get('props',{}).get('media.class')=='Audio/Sink']"
+```
+
+If it says `suspended`, enable the built-in workaround:
+
+```bash
+MICPY_SOUND_KEEPALIVE=1
+```
+
+It keeps the output awake from inside the app, so no system config is touched.
+See `SOUND_DEBUGGING.md` for the full diagnosis and the system-wide alternative.
+
 ---
 
 ## ⚙️ Configuration
@@ -189,6 +215,15 @@ Create an `.env` file:
 PARAKEET_API_URL=http://localhost:5092/v1
 PARAKEET_MODEL=parakeet-tdt-0.6b-v3
 ```
+
+Notification sound options (all optional, see `SOUND_DEBUGGING.md`):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `MICPY_SOUND_KEEPALIVE` | Keep the audio output awake so short beeps are never swallowed | off |
+| `MICPY_SOUND_WARMUP_MS` | Leading silence that "warms up" a sleeping device | 0 |
+| `MICPY_SOUND_DURATION_MS` | Beep length | 80 / 120 ms |
+| `MICPY_SOUND_VOLUME` | Beep amplitude, 0.0–1.0 | 0.3 |
 
 `.env` lookup order:
 - `./.env`

@@ -43,7 +43,12 @@ except ImportError as e:
     sys.exit(1)
 
 # Локальные модули
-from client.audio_buffer import AudioBuffer, play_sound
+from client.audio_buffer import (
+    AudioBuffer,
+    play_sound,
+    start_keepalive,
+    stop_keepalive,
+)
 from client.parakeet_client import ParakeetClient
 
 
@@ -580,10 +585,14 @@ class MinimalSTTEditor:
 
     async def run(self):
         """Запуск редактора"""
+        # Не даём аудиовыходу заснуть (MICPY_SOUND_KEEPALIVE=1), иначе короткий
+        # бип теряется при пробуждении устройства — см. SOUND_DEBUGGING.md
+        start_keepalive()
         try:
             await self.initialize()
             await self.app.run_async()
         finally:
+            stop_keepalive()
             await self.cleanup()
 
 
