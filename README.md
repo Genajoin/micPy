@@ -212,9 +212,38 @@ See `SOUND_DEBUGGING.md` for the full diagnosis and the system-wide alternative.
 Create an `.env` file:
 
 ```bash
-PARAKEET_API_URL=http://localhost:5092/v1
-PARAKEET_MODEL=parakeet-tdt-0.6b-v3
+PARAKEET_API_URL=http://localhost:5093/v1
+PARAKEET_MODEL=large-v3-turbo
+MICPY_LANGUAGE=ru
 ```
+
+> Command-line arguments override `.env`, which overrides the built-in defaults.
+
+Recognition options:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `MICPY_LANGUAGE` | Language hint sent to the server (`ru`, `en`, …) | not sent (server decides) |
+| `MICPY_GLOSSARY` | Path to the glossary file (see below) | `~/.config/micpy/glossary.txt` |
+| `MICPY_PROMPT` | Full prompt text, replaces the glossary-based prompt | — |
+
+### Glossary (English terms in Russian speech)
+
+Whisper writes English technical terms in Latin script much more reliably when it
+gets a hint. micPy builds that hint from a plain-text glossary and sends it as the
+`prompt` field with every request:
+
+```bash
+mkdir -p ~/.config/micpy
+cp glossary.example.txt ~/.config/micpy/glossary.txt
+```
+
+One term per line or comma-separated, `#` starts a comment. The file is re-read on
+every recording, so edits apply without restarting the daemon. Keep it short
+(~600 characters are used) and list the words the model actually gets wrong.
+
+On a 20-phrase test of mixed Russian/English developer speech, the glossary raised
+correctly spelled English terms from 24/41 to 31/41.
 
 Notification sound options (all optional, see `SOUND_DEBUGGING.md`):
 
@@ -235,8 +264,8 @@ Notification sound options (all optional, see `SOUND_DEBUGGING.md`):
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--api-url` | http://localhost:5092/v1 | Parakeet API URL |
-| `--model` | parakeet-tdt-0.6b-v3 | Transcription model |
+| `--api-url` | `$PARAKEET_API_URL` or http://localhost:5092/v1 | STT API URL |
+| `--model` | `$PARAKEET_MODEL` or parakeet-tdt-0.6b-v3 | Transcription model |
 | `--test` | - | Test mode |
 | `--output-mode` | auto | Daemon output mode: auto/injection/clipboard |
 
@@ -251,8 +280,13 @@ micPy/
 │   ├── minimal_editor.py     # TUI editor
 │   ├── voice_daemon.py       # Background daemon
 │   ├── audio_buffer.py       # Audio capture
-│   ├── parakeet_client.py    # HTTP client to the API
+│   ├── parakeet_client.py    # HTTP client to the API (+ glossary prompt)
 │   └── single_instance.py    # Single-instance lock
+├── server/
+│   ├── app.py                # Whisper server (faster-whisper, OpenAI-compatible)
+│   ├── docker-compose.yml    # gpu / cpu profiles
+│   └── micpy-server          # start/stop/switch script
+├── glossary.example.txt
 ├── pyproject.toml
 └── README.md
 ```
@@ -263,17 +297,50 @@ micPy/
 
 An OpenAI-compatible STT endpoint is required:
 
-- `POST /v1/audio/transcriptions` — audio transcription
+- `POST /v1/audio/transcriptions` — audio transcription (`file`, `model`, optional `language`, `prompt`)
 - `GET /health` — availability check (optional)
 
-Recommended as of early 2026: Parakeet-tdt-0.6b-v3 with CPU inference.
-Recommended install via Docker Compose:
+### Recommended: bundled Whisper server
+
+The `server/` directory contains a small OpenAI-compatible server built on
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) with Whisper
+`large-v3-turbo`. It is the best fit for Russian speech mixed with English technical
+terms: on a 20-phrase test it spelled 31/41 English terms correctly, while
+Parakeet and GigaAM wrote them in Cyrillic transliteration (0–3/41).
+
+It also filters silence with Silero VAD and drops the phrases Whisper tends to
+invent on silence ("Продолжение следует…" and the like).
+
+```bash
+ln -s "$PWD/server/micpy-server" ~/.local/bin/micpy-server
+
+micpy-server gpu      # NVIDIA GPU (float16), ~0.13 s per 5 s phrase
+micpy-server cpu      # CPU only (int8), ~1.5 s per 5 s phrase, frees the GPU
+micpy-server status   # what is running
+micpy-server logs
+micpy-server stop
+```
+
+Both modes listen on port `5093`; switching stops the other one, so the client
+config does not change. The GPU mode needs the NVIDIA Container Toolkit configured
+for Docker (`sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`).
+The model (~1.6 GB) is downloaded on first start into the `micpy-whisper-models` volume.
+
+### Alternative: Parakeet (Russian-only dictation)
+
+For pure Russian without English terms, Parakeet is a lighter CPU option:
 
 ```bash
 git clone https://github.com/groxaxo/parakeet-tdt-0.6b-v3-fastapi-openai
 cd parakeet-tdt-0.6b-v3-fastapi-openai
 docker compose up parakeet-cpu -d
 ```
+
+Avoid its default INT8 build of `parakeet-tdt-0.6b-v3`: quantization noticeably hurts
+Russian accuracy (FLEURS WER 8.5 vs 6.5 for FP32). The INT8 export of
+[Parakeet Ultra](https://huggingface.co/Olicorne/parakeet-tdt-0.6b-v3-ultra-onnx)
+does not have this problem (6.4) and is faster on CPU.
+
 ---
 
 ## 👤 Author
