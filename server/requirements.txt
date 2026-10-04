@@ -1,0 +1,8 @@
+faster-whisper==1.2.1
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
+soundfile>=0.12
+# ctranslate2 4.x загружает CUDA 12 cuBLAS и cuDNN 9; на CPU не используются
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
