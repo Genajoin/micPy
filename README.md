@@ -239,8 +239,15 @@ cp glossary.example.txt ~/.config/micpy/glossary.txt
 ```
 
 One term per line or comma-separated, `#` starts a comment. The file is re-read on
-every recording, so edits apply without restarting the daemon. Keep it short
-(~600 characters are used) and list the words the model actually gets wrong.
+every recording, so edits apply without restarting the daemon.
+
+How big can it be? Whisper keeps only the last ~223 tokens of the prompt (about 50
+terms; a Latin term is 2–4 tokens, a Cyrillic abbreviation 4–5) and silently drops
+the beginning. The bundled server trims overflowing prompts from the end instead and
+logs `prompt trimmed`. Bigger is not better, though: unrelated terms dilute the hint.
+In a test, 16 relevant terms gave 31/41 correct English terms, while the same 16
+mixed with 16–39 unrelated ones gave 25–28/41. List the words the model actually
+gets wrong; common ones (Python, GitLab, PostgreSQL, React, JSON) are fine without it.
 
 On a 20-phrase test of mixed Russian/English developer speech, the glossary raised
 correctly spelled English terms from 24/41 to 31/41.

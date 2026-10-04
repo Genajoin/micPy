@@ -31,6 +31,9 @@ BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
 DEFAULT_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "ru") or None
 DEFAULT_PROMPT = os.getenv("WHISPER_PROMPT") or None
 SAMPLE_RATE = 16000
+# Whisper берёт в подсказку только последние 223 токена (половина контекста декодера),
+# лишнее молча отрезается с начала — вместе с вводной фразой
+MAX_PROMPT_TOKENS = 223
 
 # Фразы, которые Whisper выдумывает на тишине и шуме (наследие субтитров в обучающих данных)
 HALLUCINATIONS = {
@@ -86,6 +89,25 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="micPy Whisper server", lifespan=lifespan)
 
 
+def _fit_prompt(model: WhisperModel, prompt: Optional[str]) -> Optional[str]:
+    """Укоротить подсказку до лимита, отбрасывая термины с конца, а не начало."""
+    if not prompt:
+        return None
+    def count(text: str) -> int:
+        return len(model.hf_tokenizer.encode(" " + text.strip(), add_special_tokens=False).ids)
+
+    original = count(prompt)
+    if original <= MAX_PROMPT_TOKENS:
+        return prompt
+    while count(prompt) > MAX_PROMPT_TOKENS and "," in prompt:
+        prompt = prompt.rsplit(",", 1)[0] + "."
+    if count(prompt) > MAX_PROMPT_TOKENS:
+        log.warning("prompt of %d tokens dropped: no terms to trim", original)
+        return None
+    log.warning("prompt trimmed from %d to %d tokens, tail terms dropped", original, count(prompt))
+    return prompt
+
+
 @app.get("/health")
 def health() -> dict:
     return {
@@ -127,7 +149,7 @@ async def transcriptions(
         segments, info = model_.transcribe(
             audio,
             language=language or DEFAULT_LANGUAGE,
-            initial_prompt=prompt or DEFAULT_PROMPT,
+            initial_prompt=_fit_prompt(model_, prompt or DEFAULT_PROMPT),
             beam_size=BEAM_SIZE,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 300},
