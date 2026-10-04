@@ -1,0 +1,18 @@
+# Словарь терминов micPy: подсказка для Whisper, как писать английские слова.
+# По одному термину на строку или через запятую. # — комментарий.
+# Файл читается при каждой записи, перезапуск не нужен.
+# Путь по умолчанию: ~/.config/micpy/glossary.txt (или MICPY_GLOSSARY).
+# Whisper учитывает около 600 символов подсказки — держите список коротким
+# и пишите сюда то, что модель путает, а не все слова подряд.
+
+# Инструменты
+Docker, Kubernetes, GitLab, GitHub, Claude, Claude Code
+
+# Языки и фреймворки
+Python, FastAPI, pytest, TypeScript
+
+# Инфраструктура
+PostgreSQL, Redis, Nginx
+
+# Процесс
+merge request, pull request, README
