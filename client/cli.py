@@ -10,7 +10,11 @@ CLI интерфейс для MicPy
 import argparse
 import sys
 import os
+import socket
 from pathlib import Path
+
+DEFAULT_API_URL = 'http://localhost:5092/v1'
+DEFAULT_MODEL = 'parakeet-tdt-0.6b-v3'
 
 # Импортируем функции из клиентских модулей
 try:
@@ -38,13 +42,13 @@ def create_parser() -> argparse.ArgumentParser:
     # Глобальные аргументы
     parser.add_argument(
         '--api-url',
-        default='http://localhost:5092/v1',
-        help='URL Parakeet API (по умолчанию: http://localhost:5092/v1)'
+        default=None,
+        help=f'URL Parakeet API (по умолчанию: $PARAKEET_API_URL или {DEFAULT_API_URL})'
     )
     parser.add_argument(
         '--model',
-        default='parakeet-tdt-0.6b-v3',
-        help='Модель для транскрипции (по умолчанию: parakeet-tdt-0.6b-v3)'
+        default=None,
+        help=f'Модель для транскрипции (по умолчанию: $PARAKEET_MODEL или {DEFAULT_MODEL})'
     )
     parser.add_argument(
         '--test',
@@ -59,22 +63,28 @@ def create_parser() -> argparse.ArgumentParser:
     daemon_parser = subparsers.add_parser(
         'daemon',
         help='Запустить фоновый сервис голосового ввода',
-        description='Фоновый сервис для голосового ввода через Unix сокет'
+        description='Фоновый сервис для голосового ввода через Unix сокет или горячую клавишу'
     )
     daemon_parser.add_argument(
         '--api-url',
-        default='http://localhost:5092/v1',
+        default=None,
         help='URL Parakeet API'
     )
     daemon_parser.add_argument(
         '--model',
-        default='parakeet-tdt-0.6b-v3',
+        default=None,
         help='Модель для транскрипции'
     )
     daemon_parser.add_argument(
         '--socket-path',
         default=None,
         help='Путь к Unix сокету (по умолчанию: ~/.cache/voice-input.sock)'
+    )
+    daemon_parser.add_argument(
+        '--hotkey',
+        default=None,
+        help='Глобальная горячая клавиша вместо сокета, например "<ctrl>+<alt>+<space>" '
+             '(по умолчанию: $MICPY_HOTKEY; на Windows — <ctrl>+<alt>+<space>)'
     )
     daemon_parser.add_argument(
         '--output-mode',
@@ -128,6 +138,9 @@ def find_env_file():
         # 5. XDG data directory
         os.path.expanduser('~/.local/share/micpy/.env'),
     ]
+    # 6. Windows: %APPDATA%\micpy\.env
+    if os.environ.get('APPDATA'):
+        search_paths.append(os.path.join(os.environ['APPDATA'], 'micpy', '.env'))
 
     for env_file in search_paths:
         if os.path.exists(env_file):
@@ -158,16 +171,21 @@ def load_env_file(env_file=None):
         print("💡 Для настройки создайте .env файл в текущей директории или домашней папке")
 
 
+def resolve_api_settings(args):
+    """Аргументы CLI > переменные окружения (.env) > значения по умолчанию"""
+    args.api_url = args.api_url or os.environ.get('PARAKEET_API_URL') or DEFAULT_API_URL
+    args.model = args.model or os.environ.get('PARAKEET_MODEL') or DEFAULT_MODEL
+    os.environ['PARAKEET_API_URL'] = args.api_url
+    os.environ['PARAKEET_MODEL'] = args.model
+
+
 def main_client(args):
     """Точка входа для клиента"""
     # Ищем и загружаем .env файл
     load_env_file()
 
     # Устанавливаем переменные окружения из аргументов (если указаны)
-    if args.api_url:
-        os.environ['PARAKEET_API_URL'] = args.api_url
-    if args.model:
-        os.environ['PARAKEET_MODEL'] = args.model
+    resolve_api_settings(args)
 
     print("🎤 Запуск STT клиента")
     print(f"   API: {args.api_url}")
@@ -197,32 +215,39 @@ def main_daemon(args):
     load_env_file()
 
     # Устанавливаем переменные окружения из аргументов (если указаны)
-    if hasattr(args, 'api_url') and args.api_url:
-        os.environ['PARAKEET_API_URL'] = args.api_url
-    if hasattr(args, 'model') and args.model:
-        os.environ['PARAKEET_MODEL'] = args.model
+    resolve_api_settings(args)
 
-    print("Voice Input Daemon")
-    print(f"   API: {args.api_url}")
-    print(f"   Model: {args.model}")
-    print(f"   Socket: {args.socket_path or '~/.cache/voice-input.sock'}")
-    print(f"   Output mode: {args.output_mode}")
-
-    # Импортируем и запускаем демон
     try:
-        from client.voice_daemon import VoiceInputDaemon
-        daemon = VoiceInputDaemon(
-            api_url=args.api_url,
-            model=args.model,
-            socket_path=Path(args.socket_path) if args.socket_path else None,
-            output_mode=args.output_mode
-        )
-        daemon.run()
+        from client.voice_daemon import VoiceInputDaemon, DEFAULT_HOTKEY
     except ImportError as e:
         print(f"Error: Failed to import voice_daemon module: {e}")
         print("Make sure all dependencies are installed:")
         print("  pip install pyperclip requests")
         sys.exit(1)
+
+    args.hotkey = args.hotkey or os.environ.get('MICPY_HOTKEY')
+    if not args.hotkey and not hasattr(socket, 'AF_UNIX'):
+        # Windows: Unix сокетов нет, остаётся только горячая клавиша
+        args.hotkey = DEFAULT_HOTKEY
+
+    print("Voice Input Daemon")
+    print(f"   API: {args.api_url}")
+    print(f"   Model: {args.model}")
+    if args.hotkey:
+        print(f"   Hotkey: {args.hotkey}")
+    else:
+        print(f"   Socket: {args.socket_path or '~/.cache/voice-input.sock'}")
+    print(f"   Output mode: {args.output_mode}")
+
+    try:
+        daemon = VoiceInputDaemon(
+            api_url=args.api_url,
+            model=args.model,
+            socket_path=Path(args.socket_path) if args.socket_path else None,
+            output_mode=args.output_mode,
+            hotkey=args.hotkey
+        )
+        daemon.run()
     except KeyboardInterrupt:
         print("\nDaemon stopped.")
 

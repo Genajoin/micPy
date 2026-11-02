@@ -6,10 +6,56 @@
 """
 
 import logging
+import os
+from pathlib import Path
 from typing import Optional, Dict, Any
 import requests
 
 logger = logging.getLogger('ParakeetClient')
+
+DEFAULT_GLOSSARY_PATH = Path.home() / '.config' / 'micpy' / 'glossary.txt'
+PROMPT_PREFIX = (
+    "Это диктовка разработчика. "
+    "Английские технические термины пишутся латиницей"
+)
+# Whisper учитывает ~223 токена подсказки (≈ 50 терминов). Точную подгонку делает
+# сервер micPy, здесь лишь защита от случайно огромного файла
+MAX_PROMPT_CHARS = 1500
+
+
+def load_glossary(path: Optional[Path] = None) -> list[str]:
+    """
+    Термины из файла словаря: по одному на строку или через запятую, # — комментарий.
+    """
+    path = path or Path(os.environ.get('MICPY_GLOSSARY', DEFAULT_GLOSSARY_PATH)).expanduser()
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return []
+    terms = []
+    for line in lines:
+        line = line.split('#', 1)[0]
+        terms.extend(t.strip() for t in line.split(',') if t.strip())
+    return terms
+
+
+def build_prompt() -> Optional[str]:
+    """
+    Подсказка для модели: MICPY_PROMPT целиком или префикс + термины из словаря.
+
+    Читается при каждом запросе, чтобы правки словаря работали без перезапуска.
+    """
+    explicit = os.environ.get('MICPY_PROMPT', '').strip()
+    if explicit:
+        return explicit
+    terms = load_glossary()
+    if not terms:
+        return None
+    prompt = f"{PROMPT_PREFIX}: {', '.join(terms)}."
+    if len(prompt) > MAX_PROMPT_CHARS:
+        logger.warning(f"Glossary prompt truncated to {MAX_PROMPT_CHARS} chars")
+        prompt = prompt[:MAX_PROMPT_CHARS].rsplit(',', 1)[0] + '.'
+    return prompt
 
 
 class ParakeetClient:
@@ -111,6 +157,12 @@ class ParakeetClient:
             data = {
                 'model': self.model
             }
+            language = os.environ.get('MICPY_LANGUAGE', '').strip()
+            if language:
+                data['language'] = language
+            prompt = build_prompt()
+            if prompt:
+                data['prompt'] = prompt
 
             response = requests.post(
                 url,

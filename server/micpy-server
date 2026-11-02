@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Управление Whisper-сервером micPy.
+#   micpy-server gpu     — запустить на GPU (по умолчанию)
+#   micpy-server cpu     — запустить на CPU, освободив GPU целиком
+#   micpy-server stop    — остановить
+#   micpy-server status  — что запущено и готово ли
+#   micpy-server logs    — логи
+#   micpy-server build   — пересобрать образ
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+COMPOSE=(docker compose -f "$DIR/docker-compose.yml" -p micpy-whisper)
+PORT=5093
+
+wait_ready() {
+    printf 'Ожидание готовности'
+    for _ in $(seq 1 120); do
+        if curl -sf "http://localhost:$PORT/health" | grep -q '"healthy"'; then
+            echo; curl -s "http://localhost:$PORT/health"; echo
+            return 0
+        fi
+        printf '.'; sleep 2
+    done
+    echo; echo "Сервер не поднялся за 4 минуты, смотрите: micpy-server logs" >&2
+    return 1
+}
+
+start() {
+    local mode=$1 other=$2
+    "${COMPOSE[@]}" --profile "$other" stop "whisper-$other" 2>/dev/null || true
+    "${COMPOSE[@]}" --profile "$other" rm -f "whisper-$other" 2>/dev/null || true
+    "${COMPOSE[@]}" --profile "$mode" up -d --build "whisper-$mode"
+    wait_ready
+}
+
+case "${1:-gpu}" in
+    gpu)    start gpu cpu ;;
+    cpu)    start cpu gpu ;;
+    stop)   "${COMPOSE[@]}" --profile gpu --profile cpu stop ;;
+    status) docker ps -a --filter name=micpy-whisper --format 'table {{.Names}}\t{{.Status}}'
+            curl -s "http://localhost:$PORT/health" && echo || echo "API недоступен на порту $PORT" ;;
+    logs)   docker logs -f --tail 100 "$(docker ps --filter name=micpy-whisper -q | head -1)" ;;
+    build)  "${COMPOSE[@]}" --profile gpu build ;;
+    *)      sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

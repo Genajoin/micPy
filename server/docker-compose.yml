@@ -1,0 +1,46 @@
+# micPy Whisper server. Управление: server/micpy-server gpu|cpu|stop|status|logs
+# Оба варианта слушают один порт, поэтому одновременно работает только один.
+
+x-whisper: &whisper
+  build: .
+  image: micpy-whisper:latest
+  ports:
+    - "5093:5093"
+  volumes:
+    - whisper-models:/models
+  restart: unless-stopped
+  environment: &whisper-env
+    WHISPER_MODEL: large-v3-turbo
+    WHISPER_LANGUAGE: ru
+    WHISPER_BEAM_SIZE: "5"
+
+services:
+  whisper-gpu:
+    <<: *whisper
+    container_name: micpy-whisper-gpu
+    profiles: ["gpu"]
+    environment:
+      <<: *whisper-env
+      WHISPER_DEVICE: cuda
+      WHISPER_COMPUTE_TYPE: float16
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  whisper-cpu:
+    <<: *whisper
+    container_name: micpy-whisper-cpu
+    profiles: ["cpu"]
+    environment:
+      <<: *whisper-env
+      WHISPER_DEVICE: cpu
+      WHISPER_COMPUTE_TYPE: int8
+      WHISPER_CPU_THREADS: "16"
+
+volumes:
+  whisper-models:
+    name: micpy-whisper-models
