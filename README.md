@@ -30,6 +30,9 @@ sudo apt install wtype
 brew install portaudio
 ```
 
+**Windows:** nothing extra — PyAudio ships wheels and the clipboard works out of the box.
+See [Windows client](#windows-client-with-a-remote-server) below.
+
 ### Installation
 
 ```bash
@@ -52,7 +55,8 @@ micpy --api-url http://localhost:5092/v1  # Specify API URL
 micpy --test                   # Test mode
 
 micpy daemon                   # Background voice-input service
-micpy trigger                  # Send a trigger to the daemon
+micpy daemon --hotkey "<ctrl>+<alt>+space"  # Daemon with its own global hotkey
+micpy trigger                  # Send a trigger to the daemon (Linux/macOS)
 
 mic-stream                     # Alias for micpy
 ```
@@ -161,6 +165,53 @@ For auto-start on login:
    journalctl --user -u micpy-daemon -f
    ```
 
+### Windows client with a remote server
+
+The client runs on Windows and talks to the Whisper server on another machine
+over the network. The daemon listens for a global hotkey itself (Windows has no
+Unix sockets, so `micpy trigger` is not used there) and puts the transcription
+into the clipboard.
+
+1. On the server machine, start the server (`micpy-server gpu` or `cpu`) and make
+   sure port `5093` is reachable from the laptop, e.g. `sudo ufw allow 5093/tcp`.
+   The server has no authentication — keep it inside your LAN/VPN.
+
+2. On Windows, install Python 3.10+ (python.org, tick "Add to PATH") and the client:
+   ```powershell
+   git clone https://github.com/Genajoin/micPy.git
+   cd micPy
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -e .
+   ```
+
+3. Create `%APPDATA%\micpy\.env` pointing to the server:
+   ```
+   PARAKEET_API_URL=http://<server-host-or-ip>:5093/v1
+   PARAKEET_MODEL=large-v3-turbo
+   MICPY_LANGUAGE=ru
+   MICPY_HOTKEY=<ctrl>+<alt>+space
+   ```
+   The glossary goes to `%USERPROFILE%\.config\micpy\glossary.txt` (or set `MICPY_GLOSSARY`).
+
+4. Run it in a console first to see the logs:
+   ```powershell
+   micpy daemon
+   ```
+   Press the hotkey, speak, press it again — the text lands in the clipboard
+   (Ctrl+V). Beeps mark the start and the end.
+
+5. Auto-start without a console window: press Win+R, open `shell:startup` and
+   create a shortcut with the target
+   ```
+   C:\path\to\micPy\.venv\Scripts\pythonw.exe -m client.cli daemon
+   ```
+   and "Start in" set to `C:\path\to\micPy`.
+
+Hotkey format is pynput's: modifiers in angle brackets (`<ctrl>`, `<alt>`, `<shift>`,
+`<cmd>`), keys as characters or `<f9>`, `<space>`, joined with `+`.
+The hotkey mode also works on Linux under X11 (`pip install pynput`), but not on Wayland.
+
 ### Troubleshooting
 
 **Error "Pyperclip could not find a copy/paste mechanism":**
@@ -266,6 +317,8 @@ Notification sound options (all optional, see `SOUND_DEBUGGING.md`):
 - `~/.env`
 - `~/micpy.env`
 - `~/.config/micpy/.env`
+- `~/.local/share/micpy/.env`
+- `%APPDATA%\micpy\.env` (Windows)
 
 ### Arguments
 
@@ -275,6 +328,7 @@ Notification sound options (all optional, see `SOUND_DEBUGGING.md`):
 | `--model` | `$PARAKEET_MODEL` or parakeet-tdt-0.6b-v3 | Transcription model |
 | `--test` | - | Test mode |
 | `--output-mode` | auto | Daemon output mode: auto/injection/clipboard |
+| `--hotkey` | `$MICPY_HOTKEY`; on Windows `<ctrl>+<alt>+space` | Daemon global hotkey instead of the Unix socket |
 
 ---
 

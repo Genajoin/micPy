@@ -62,7 +62,7 @@ def create_parser() -> argparse.ArgumentParser:
     daemon_parser = subparsers.add_parser(
         'daemon',
         help='Запустить фоновый сервис голосового ввода',
-        description='Фоновый сервис для голосового ввода через Unix сокет'
+        description='Фоновый сервис для голосового ввода через Unix сокет или горячую клавишу'
     )
     daemon_parser.add_argument(
         '--api-url',
@@ -78,6 +78,12 @@ def create_parser() -> argparse.ArgumentParser:
         '--socket-path',
         default=None,
         help='Путь к Unix сокету (по умолчанию: ~/.cache/voice-input.sock)'
+    )
+    daemon_parser.add_argument(
+        '--hotkey',
+        default=None,
+        help='Глобальная горячая клавиша вместо сокета, например "<ctrl>+<alt>+space" '
+             '(по умолчанию: $MICPY_HOTKEY; на Windows — <ctrl>+<alt>+space)'
     )
     daemon_parser.add_argument(
         '--output-mode',
@@ -131,6 +137,9 @@ def find_env_file():
         # 5. XDG data directory
         os.path.expanduser('~/.local/share/micpy/.env'),
     ]
+    # 6. Windows: %APPDATA%\micpy\.env
+    if os.environ.get('APPDATA'):
+        search_paths.append(os.path.join(os.environ['APPDATA'], 'micpy', '.env'))
 
     for env_file in search_paths:
         if os.path.exists(env_file):
@@ -210,7 +219,11 @@ def main_daemon(args):
     print("Voice Input Daemon")
     print(f"   API: {args.api_url}")
     print(f"   Model: {args.model}")
-    print(f"   Socket: {args.socket_path or '~/.cache/voice-input.sock'}")
+    args.hotkey = args.hotkey or os.environ.get('MICPY_HOTKEY')
+    if args.hotkey:
+        print(f"   Hotkey: {args.hotkey}")
+    else:
+        print(f"   Socket: {args.socket_path or '~/.cache/voice-input.sock'}")
     print(f"   Output mode: {args.output_mode}")
 
     # Импортируем и запускаем демон
@@ -220,7 +233,8 @@ def main_daemon(args):
             api_url=args.api_url,
             model=args.model,
             socket_path=Path(args.socket_path) if args.socket_path else None,
-            output_mode=args.output_mode
+            output_mode=args.output_mode,
+            hotkey=args.hotkey
         )
         daemon.run()
     except ImportError as e:

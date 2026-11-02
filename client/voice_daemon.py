@@ -2,13 +2,16 @@
 """
 Фоновый сервис голосового ввода.
 
-Активируется через Unix сокет, записывает аудио,
-транскрибирует через Parakeet API и вставляет текст через буфер обмена.
+Активируется через Unix сокет или глобальную горячую клавишу, записывает
+аудио, транскрибирует через Parakeet API и вставляет текст через буфер обмена.
 
-Использование:
-  1. Запустите демон: mic-stream daemon --socket
-  2. Привяжите команду к хоткею в DE: mic-stream trigger
+Использование (Linux):
+  1. Запустите демон: micpy daemon
+  2. Привяжите команду к хоткею в DE: micpy trigger
   3. GNOME: Settings → Keyboard → Custom Shortcuts
+
+Использование (Windows, X11):
+  micpy daemon --hotkey "<ctrl>+<alt>+space"
 """
 
 import logging
@@ -47,12 +50,15 @@ logger = logging.getLogger('VoiceDaemon')
 # Путь к сокету по умолчанию
 DEFAULT_SOCKET_PATH = Path.home() / '.cache' / 'voice-input.sock'
 
+# Горячая клавиша по умолчанию там, где нет Unix сокетов (Windows)
+DEFAULT_HOTKEY = '<ctrl>+<alt>+space'
+
 
 class VoiceInputDaemon:
     """
     Демон голосового ввода.
 
-    Активируется через Unix сокет, записывает аудио с микрофона,
+    Активируется через Unix сокет или горячую клавишу, записывает аудио с микрофона,
     отправляет на транскрипцию и вставляет результат через буфер обмена.
     """
 
@@ -61,7 +67,8 @@ class VoiceInputDaemon:
         api_url: str = "http://localhost:5092/v1",
         model: str = "parakeet-tdt-0.6b-v3",
         socket_path: Optional[Path] = None,
-        output_mode: OutputMode = 'auto'
+        output_mode: OutputMode = 'auto',
+        hotkey: Optional[str] = None
     ):
         """
         Инициализация демона.
@@ -71,11 +78,17 @@ class VoiceInputDaemon:
             model: Модель для транскрипции
             socket_path: Путь к Unix сокету
             output_mode: Режим вывода текста (auto/injection/clipboard)
+            hotkey: Глобальная горячая клавиша в формате pynput
+                (например "<ctrl>+<alt>+space"). Если задана — вместо сокета.
+                Без Unix сокетов (Windows) используется DEFAULT_HOTKEY.
         """
         self.api_url = api_url
         self.model = model
         self.socket_path = socket_path or DEFAULT_SOCKET_PATH
         self.output_mode = output_mode
+        if not hotkey and not hasattr(socket, 'AF_UNIX'):
+            hotkey = DEFAULT_HOTKEY
+        self.hotkey = hotkey
 
         self.audio_buffer = AudioBuffer(sample_rate=16000, channels=1)
         self.api_client = ParakeetClient(api_url=api_url, model=model)
@@ -88,12 +101,16 @@ class VoiceInputDaemon:
         # Проверяем доступность инструментов при инициализации
         self._wtype_available = shutil.which('wtype') is not None
         self._wl_copy_available = shutil.which('wl-copy') is not None
-        self._ensure_wayland_env()
+        if self._wl_copy_available:
+            self._ensure_wayland_env()
 
         logger.info("VoiceInputDaemon initialized")
         logger.info(f"  API: {api_url}")
         logger.info(f"  Model: {model}")
-        logger.info(f"  Socket: {self.socket_path}")
+        if self.hotkey:
+            logger.info(f"  Hotkey: {self.hotkey}")
+        else:
+            logger.info(f"  Socket: {self.socket_path}")
         logger.info(f"  Output mode: {output_mode}")
         if self._wtype_available:
             logger.info("  wtype: available")
@@ -300,9 +317,50 @@ class VoiceInputDaemon:
 
         self._running = True
         try:
-            self._run_socket_mode()
+            if self.hotkey:
+                self._run_hotkey_mode()
+            else:
+                self._run_socket_mode()
         finally:
             stop_keepalive()
+
+    def _run_hotkey_mode(self):
+        """Запуск в режиме глобальной горячей клавиши (pynput)."""
+        try:
+            from pynput import keyboard
+        except ImportError:
+            logger.error("pynput not installed: pip install pynput")
+            sys.exit(1)
+
+        def on_activate():
+            # Транскрипция идёт секунды, а колбэк выполняется в потоке хука
+            # клавиатуры: если его заблокировать, Windows тормозит ввод и
+            # может снять хук. Поэтому — в отдельный поток.
+            logger.info("Trigger received via hotkey")
+            threading.Thread(target=self.toggle_recording, daemon=True).start()
+
+        try:
+            listener = keyboard.GlobalHotKeys({self.hotkey: on_activate})
+        except ValueError as e:
+            logger.error(f"Invalid hotkey {self.hotkey!r}: {e}")
+            sys.exit(1)
+
+        listener.start()
+
+        logger.info("=" * 50)
+        logger.info("Voice Input Daemon is running!")
+        logger.info(f"Press {self.hotkey} to start/stop recording")
+        logger.info("Press Ctrl+C to exit")
+        logger.info("=" * 50)
+
+        try:
+            while self._running and listener.is_alive():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            logger.info("\nShutting down...")
+        finally:
+            self._running = False
+            listener.stop()
 
     def _run_socket_mode(self):
         """Запуск в режиме Unix сокета."""
@@ -383,13 +441,19 @@ def main():
         default=None,
         help=f'Unix socket path (default: {DEFAULT_SOCKET_PATH})'
     )
+    parser.add_argument(
+        '--hotkey',
+        default=os.environ.get('MICPY_HOTKEY'),
+        help=f'Global hotkey instead of socket, e.g. "{DEFAULT_HOTKEY}"'
+    )
 
     args = parser.parse_args()
 
     daemon = VoiceInputDaemon(
         api_url=args.api_url,
         model=args.model,
-        socket_path=args.socket_path
+        socket_path=args.socket_path,
+        hotkey=args.hotkey
     )
     daemon.run()
 
@@ -404,6 +468,11 @@ def send_trigger(socket_path: Optional[Path] = None) -> bool:
     Returns:
         True если успешно
     """
+    if not hasattr(socket, 'AF_UNIX'):
+        logger.error("Unix sockets are not available on this platform")
+        logger.error("Run the daemon with --hotkey instead of using trigger")
+        return False
+
     path = str(socket_path or DEFAULT_SOCKET_PATH)
 
     if not Path(path).exists():

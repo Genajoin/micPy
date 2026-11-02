@@ -2,7 +2,7 @@
 """
 Модуль буферизации аудио для записи с микрофона.
 
-Кроссплатформенный захват аудио (Linux/macOS) с сохранением в WAV формат.
+Кроссплатформенный захват аудио (Linux/macOS/Windows) с сохранением в WAV формат.
 """
 
 import io
@@ -419,7 +419,15 @@ def play_sound(sound_type: str = 'start'):
 
     wav_path = _get_beep_wav(sound_type)
 
-    clean_env = _clean_env()
+    if platform.system() == 'Windows':
+        # Асинхронно через системный микшер: не блокирует и не конфликтует с записью
+        try:
+            import winsound
+            winsound.PlaySound(wav_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            logger.info(f"played via winsound, sound={sound_type}")
+            return
+        except Exception as e:
+            logger.warning(f"winsound failed: {e}")
 
     pw_play = shutil.which('pw-play')
     if pw_play:
@@ -427,7 +435,7 @@ def play_sound(sound_type: str = 'start'):
         try:
             proc = subprocess.Popen(
                 ['bash', '-c', f'sleep {delay} && exec {pw_play} "{wav_path}"'],
-                env=clean_env,
+                env=_clean_env(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True
