@@ -55,7 +55,7 @@ micpy --api-url http://localhost:5092/v1  # Specify API URL
 micpy --test                   # Test mode
 
 micpy daemon                   # Background voice-input service
-micpy daemon --hotkey "<ctrl>+<alt>+space"  # Daemon with its own global hotkey
+micpy daemon --hotkey "<ctrl>+<alt>+<space>"  # Daemon with its own global hotkey
 micpy trigger                  # Send a trigger to the daemon (Linux/macOS)
 
 mic-stream                     # Alias for micpy
@@ -190,7 +190,7 @@ into the clipboard.
    PARAKEET_API_URL=http://<server-host-or-ip>:5093/v1
    PARAKEET_MODEL=large-v3-turbo
    MICPY_LANGUAGE=ru
-   MICPY_HOTKEY=<ctrl>+<alt>+space
+   MICPY_HOTKEY=<ctrl>+<alt>+<space>
    ```
    The glossary goes to `%USERPROFILE%\.config\micpy\glossary.txt` (or set `MICPY_GLOSSARY`).
 
@@ -328,7 +328,7 @@ Notification sound options (all optional, see `SOUND_DEBUGGING.md`):
 | `--model` | `$PARAKEET_MODEL` or parakeet-tdt-0.6b-v3 | Transcription model |
 | `--test` | - | Test mode |
 | `--output-mode` | auto | Daemon output mode: auto/injection/clipboard |
-| `--hotkey` | `$MICPY_HOTKEY`; on Windows `<ctrl>+<alt>+space` | Daemon global hotkey instead of the Unix socket |
+| `--hotkey` | `$MICPY_HOTKEY`; on Windows `<ctrl>+<alt>+<space>` | Daemon global hotkey instead of the Unix socket |
 
 ---
 

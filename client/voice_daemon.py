@@ -11,7 +11,7 @@
   3. GNOME: Settings → Keyboard → Custom Shortcuts
 
 Использование (Windows, X11):
-  micpy daemon --hotkey "<ctrl>+<alt>+space"
+  micpy daemon --hotkey "<ctrl>+<alt>+<space>"
 """
 
 import logging
@@ -51,7 +51,7 @@ logger = logging.getLogger('VoiceDaemon')
 DEFAULT_SOCKET_PATH = Path.home() / '.cache' / 'voice-input.sock'
 
 # Горячая клавиша по умолчанию там, где нет Unix сокетов (Windows)
-DEFAULT_HOTKEY = '<ctrl>+<alt>+space'
+DEFAULT_HOTKEY = '<ctrl>+<alt>+<space>'
 
 
 class VoiceInputDaemon:
@@ -79,7 +79,7 @@ class VoiceInputDaemon:
             socket_path: Путь к Unix сокету
             output_mode: Режим вывода текста (auto/injection/clipboard)
             hotkey: Глобальная горячая клавиша в формате pynput
-                (например "<ctrl>+<alt>+space"). Если задана — вместо сокета.
+                (например "<ctrl>+<alt>+<space>"). Если задана — вместо сокета.
                 Без Unix сокетов (Windows) используется DEFAULT_HOTKEY.
         """
         self.api_url = api_url
@@ -114,7 +114,7 @@ class VoiceInputDaemon:
         logger.info(f"  Output mode: {output_mode}")
         if self._wtype_available:
             logger.info("  wtype: available")
-        else:
+        elif sys.platform != 'win32':
             logger.info("  wtype: not found (will use clipboard fallback)")
 
     def _ensure_wayland_env(self):

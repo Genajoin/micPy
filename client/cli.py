@@ -10,6 +10,7 @@ CLI интерфейс для MicPy
 import argparse
 import sys
 import os
+import socket
 from pathlib import Path
 
 DEFAULT_API_URL = 'http://localhost:5092/v1'
@@ -82,8 +83,8 @@ def create_parser() -> argparse.ArgumentParser:
     daemon_parser.add_argument(
         '--hotkey',
         default=None,
-        help='Глобальная горячая клавиша вместо сокета, например "<ctrl>+<alt>+space" '
-             '(по умолчанию: $MICPY_HOTKEY; на Windows — <ctrl>+<alt>+space)'
+        help='Глобальная горячая клавиша вместо сокета, например "<ctrl>+<alt>+<space>" '
+             '(по умолчанию: $MICPY_HOTKEY; на Windows — <ctrl>+<alt>+<space>)'
     )
     daemon_parser.add_argument(
         '--output-mode',
@@ -216,19 +217,29 @@ def main_daemon(args):
     # Устанавливаем переменные окружения из аргументов (если указаны)
     resolve_api_settings(args)
 
+    try:
+        from client.voice_daemon import VoiceInputDaemon, DEFAULT_HOTKEY
+    except ImportError as e:
+        print(f"Error: Failed to import voice_daemon module: {e}")
+        print("Make sure all dependencies are installed:")
+        print("  pip install pyperclip requests")
+        sys.exit(1)
+
+    args.hotkey = args.hotkey or os.environ.get('MICPY_HOTKEY')
+    if not args.hotkey and not hasattr(socket, 'AF_UNIX'):
+        # Windows: Unix сокетов нет, остаётся только горячая клавиша
+        args.hotkey = DEFAULT_HOTKEY
+
     print("Voice Input Daemon")
     print(f"   API: {args.api_url}")
     print(f"   Model: {args.model}")
-    args.hotkey = args.hotkey or os.environ.get('MICPY_HOTKEY')
     if args.hotkey:
         print(f"   Hotkey: {args.hotkey}")
     else:
         print(f"   Socket: {args.socket_path or '~/.cache/voice-input.sock'}")
     print(f"   Output mode: {args.output_mode}")
 
-    # Импортируем и запускаем демон
     try:
-        from client.voice_daemon import VoiceInputDaemon
         daemon = VoiceInputDaemon(
             api_url=args.api_url,
             model=args.model,
@@ -237,11 +248,6 @@ def main_daemon(args):
             hotkey=args.hotkey
         )
         daemon.run()
-    except ImportError as e:
-        print(f"Error: Failed to import voice_daemon module: {e}")
-        print("Make sure all dependencies are installed:")
-        print("  pip install pyperclip requests")
-        sys.exit(1)
     except KeyboardInterrupt:
         print("\nDaemon stopped.")
 
