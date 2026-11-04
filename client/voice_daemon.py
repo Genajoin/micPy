@@ -47,6 +47,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger('VoiceDaemon')
 
+# Под pythonw.exe консоли нет (sys.stdout is None) — пишем лог в файл,
+# иначе при запуске из автозагрузки не видно, почему демон не работает.
+if sys.stdout is None:
+    _log_file = Path.home() / '.cache' / 'micpy' / 'daemon.log'
+    try:
+        _log_file.parent.mkdir(parents=True, exist_ok=True)
+        _file_handler = logging.FileHandler(_log_file, encoding='utf-8')
+        _file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        logging.getLogger().addHandler(_file_handler)
+    except OSError:
+        pass
+
 # Путь к сокету по умолчанию
 DEFAULT_SOCKET_PATH = Path.home() / '.cache' / 'voice-input.sock'
 
