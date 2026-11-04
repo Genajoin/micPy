@@ -201,12 +201,19 @@ into the clipboard.
    Press the hotkey, speak, press it again — the text lands in the clipboard
    (Ctrl+V). Beeps mark the start and the end.
 
-5. Auto-start without a console window: press Win+R, open `shell:startup` and
-   create a shortcut with the target
+5. Auto-start without a console window — run the installer from a normal
+   PowerShell:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1
    ```
-   C:\path\to\micPy\.venv\Scripts\pythonw.exe -m client.cli daemon
-   ```
-   and "Start in" set to `C:\path\to\micPy`.
+   It creates the `MicPy` shortcut in `shell:startup`, a `MicPy Voice` shortcut on
+   the Desktop (target `.venv\Scripts\pythonw.exe -m client.cli daemon`, "Start in"
+   the repo) and (re)starts the daemon. Without a console the log goes to
+   `%USERPROFILE%\.cache\micpy\daemon.log`.
+
+   > Keep the config in `%USERPROFILE%\.config\micpy\.env` rather than `%APPDATA%`:
+   > when Claude Desktop is installed as an MSIX package, files it writes under
+   > `%APPDATA%` are virtualized and invisible to normal programs.
 
 Hotkey format is pynput's: modifiers in angle brackets (`<ctrl>`, `<alt>`, `<shift>`,
 `<cmd>`), keys as characters or `<f9>`, `<space>`, joined with `+`.
